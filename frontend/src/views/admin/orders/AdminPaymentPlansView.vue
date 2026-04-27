@@ -6,6 +6,9 @@
         <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
           <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
         </button>
+        <button @click="applyCommercialPreset" :disabled="presetLoading" class="btn btn-secondary">
+          {{ presetLoading ? t('common.loading') : t('payment.admin.applyCommercialPreset') }}
+        </button>
         <button @click="openPlanEdit(null)" class="btn btn-primary">{{ t('payment.admin.createPlan') }}</button>
       </div>
 
@@ -121,6 +124,7 @@ function getPlanNameClass(groupId: number): string {
 // ==================== Plans ====================
 
 const plansLoading = ref(false)
+const presetLoading = ref(false)
 const plans = ref<SubscriptionPlan[]>([])
 const showPlanDialog = ref(false)
 const showDeletePlanDialog = ref(false)
@@ -152,6 +156,22 @@ async function loadPlans() {
   }
   catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
   finally { plansLoading.value = false }
+}
+
+async function applyCommercialPreset() {
+  presetLoading.value = true
+  try {
+    const { data: summary } = await adminPaymentAPI.applyCommercialRelayPreset()
+    appStore.showSuccess(t('payment.admin.applyCommercialPresetSuccess', {
+      groups: summary.created_groups + summary.updated_groups,
+      plans: summary.created_plans + summary.updated_plans,
+    }))
+    await Promise.all([loadGroups(), loadPlans()])
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    presetLoading.value = false
+  }
 }
 
 function openPlanEdit(plan: SubscriptionPlan | null) {

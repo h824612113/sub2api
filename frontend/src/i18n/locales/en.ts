@@ -6255,6 +6255,8 @@ export default {
       planName: 'Plan Name',
       planDescription: 'Plan Description',
       createPlan: 'Create Plan',
+      applyCommercialPreset: 'Apply Commercial Preset',
+      applyCommercialPresetSuccess: 'Synced {groups} preset groups and {plans} preset plans',
       editPlan: 'Edit Plan',
       deletePlan: 'Delete Plan',
       deletePlanConfirm: 'Are you sure you want to delete this plan?',

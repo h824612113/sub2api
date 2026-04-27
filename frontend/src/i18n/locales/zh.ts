@@ -6439,6 +6439,8 @@ export default {
       planName: '套餐名称',
       planDescription: '套餐描述',
       createPlan: '创建套餐',
+      applyCommercialPreset: '应用商用套餐预设',
+      applyCommercialPresetSuccess: '已同步 {groups} 个分组和 {plans} 个套餐预设',
       editPlan: '编辑套餐',
       deletePlan: '删除套餐',
       deletePlanConfirm: '确定要删除此套餐吗？',

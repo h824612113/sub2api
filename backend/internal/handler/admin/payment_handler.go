@@ -238,6 +238,18 @@ func (h *PaymentHandler) DeletePlan(c *gin.Context) {
 	response.Success(c, gin.H{"message": "deleted"})
 }
 
+// ApplyCommercialRelayPreset creates or updates a starter commercial relay
+// package preset with matching subscription groups and plans.
+// POST /api/v1/admin/payment/plans/presets/commercial-relay
+func (h *PaymentHandler) ApplyCommercialRelayPreset(c *gin.Context) {
+	result, err := h.configService.ApplyCommercialRelayPreset(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // --- Provider Instances ---
 
 // ListProviders returns all payment provider instances.

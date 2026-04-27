@@ -49,6 +49,13 @@ export interface UpdatePaymentConfigRequest {
   help_text?: string
 }
 
+export interface CommercialRelayPresetApplyResult {
+  created_groups: number
+  updated_groups: number
+  created_plans: number
+  updated_plans: number
+}
+
 export const adminPaymentAPI = {
   // ==================== Config ====================
 
@@ -140,6 +147,11 @@ export const adminPaymentAPI = {
   /** Create a subscription plan */
   createPlan(data: Record<string, unknown>) {
     return apiClient.post<SubscriptionPlan>('/admin/payment/plans', data)
+  },
+
+  /** Apply the starter commercial relay preset */
+  applyCommercialRelayPreset() {
+    return apiClient.post<CommercialRelayPresetApplyResult>('/admin/payment/plans/presets/commercial-relay')
   },
 
   /** Update a subscription plan */
