@@ -125,8 +125,8 @@ func TestApplyCommercialRelayPresetIsIdempotentAndRestoresPresetValues(t *testin
 	if err != nil {
 		t.Fatalf("query pro plan after reapply: %v", err)
 	}
-	if proPlan.Price != 249 {
-		t.Fatalf("pro plan price after reapply = %v, want 249", proPlan.Price)
+	if proPlan.Price != 279 {
+		t.Fatalf("pro plan price after reapply = %v, want 279", proPlan.Price)
 	}
 	if proPlan.OriginalPrice == nil || *proPlan.OriginalPrice != 299 {
 		t.Fatalf("pro plan original price after reapply = %v, want 299", proPlan.OriginalPrice)

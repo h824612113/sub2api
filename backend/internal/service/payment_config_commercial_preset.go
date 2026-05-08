@@ -356,7 +356,7 @@ func commercialRelayPresetPlans() []commercialRelayPlanSpec {
 			GroupName:     "relay-openai-pro",
 			Name:          "Pro",
 			Description:   "适合个人重度使用与高频开发场景，限时优惠价。",
-			Price:         249,
+			Price:         279,
 			OriginalPrice: commercialRelayFloatPtr(299),
 			ValidityDays:  31,
 			Features:      "日额度 $80\n周额度 $400\n31 天有效\n限时优惠",

@@ -2,7 +2,7 @@
 
 UPDATE subscription_plans
 SET
-    price = 249.00,
+    price = 279.00,
     original_price = 299.00,
     description = 'Pro 月度套餐限时优惠，每日 100 美元使用额度，未用完次日重置。',
     features = E'每日 $100 使用额度\n每周 $600 使用额度\n支持 gpt-image-2 出图\nPro 优先级通道\n限时优惠',
