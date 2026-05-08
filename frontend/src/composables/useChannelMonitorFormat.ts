@@ -12,6 +12,7 @@
 
 import { useI18n } from 'vue-i18n'
 import type { MonitorStatus, Provider } from '@/api/admin/channelMonitor'
+import { formatDurationSeconds } from '@/utils/format'
 import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
@@ -104,7 +105,7 @@ export function useChannelMonitorFormat() {
 
   function formatLatency(ms: number | null | undefined): string {
     if (ms == null) return t('monitorCommon.latencyEmpty')
-    return String(Math.round(ms))
+    return formatDurationSeconds(ms)
   }
 
   function formatPercent(v: number | null | undefined): string {

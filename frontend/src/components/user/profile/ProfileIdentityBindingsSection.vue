@@ -145,6 +145,19 @@
                   }}
                 </button>
               </div>
+
+              <div
+                v-if="item.provider === 'wechat'"
+                data-testid="profile-binding-wechat-contact"
+                class="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-700 dark:bg-dark-800/60"
+              >
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('profile.authBindings.contactSupportTitle') }}
+                </p>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  {{ t('profile.authBindings.contactSupportQQ') }}
+                </p>
+              </div>
             </div>
           </div>
 

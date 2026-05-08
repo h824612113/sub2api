@@ -27,8 +27,9 @@ function updateFavicon(logoUrl: string) {
     link.rel = 'icon'
     document.head.appendChild(link)
   }
-  link.type = logoUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon'
-  link.href = logoUrl
+  const href = logoUrl.includes('?') ? logoUrl : `${logoUrl}?v=4`
+  link.type = href.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon'
+  link.href = href
 }
 
 // Watch for site settings changes and update favicon/title

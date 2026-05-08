@@ -939,16 +939,16 @@ export default {
       groupName: '分组',
       primaryModel: '主模型',
       availability7d: '7 天可用率',
-      latency: '延迟 (ms)'
+      latency: '延迟 (s)'
     },
     detailColumns: {
       model: '模型',
       latestStatus: '最新状态',
-      latestLatency: '最新延迟 (ms)',
+      latestLatency: '最新延迟 (s)',
       availability7d: '7 天可用率',
       availability15d: '15 天可用率',
       availability30d: '30 天可用率',
-      avgLatency7d: '7 天平均延迟 (ms)'
+      avgLatency7d: '7 天平均延迟 (s)'
     },
     empty: {
       title: '暂无可显示的渠道',
@@ -1228,6 +1228,8 @@ export default {
       unbindAction: '解绑',
       unbindSuccess: '{providerName} 已解绑',
       boundCount: '已关联 {count} 条记录',
+      contactSupportTitle: '联系客服',
+      contactSupportQQ: '3969850287',
       status: {
         bound: '已绑定',
         notBound: '未绑定',
@@ -2467,7 +2469,7 @@ export default {
       apiKeyStatusFrozen: '冻结',
       apiKeyStatusUnknown: '未测试',
       apiKeyFailureCount: '失败 {count} 次',
-      apiKeyLatency: '{ms} ms',
+      apiKeyLatency: '{ms}',
       apiKeyHTTPStatus: 'HTTP {status}',
       apiKeyFrozenUntil: '冻结至 {time}',
       apiKeyLastChecked: '检查于 {time}',
@@ -2529,7 +2531,7 @@ export default {
       unbanFailed: '解封用户失败',
       inputDetailTitle: '输入摘要详情',
       inputDetailContent: '完整内容',
-      queueDelay: '排队 {ms} ms',
+      queueDelay: '排队 {ms}',
       allGroups: '全部分组',
       allGroupsHint: '当前审计全部分组',
       selectedGroupsHint: '当前审计指定分组',
@@ -2632,7 +2634,7 @@ export default {
         provider: '供应商',
         primaryModel: '主模型',
         availability7d: '7 天可用率',
-        latency: '延迟 (ms)',
+        latency: '延迟 (s)',
         enabled: '启用',
         actions: '操作'
       },
@@ -4097,7 +4099,7 @@ export default {
       proxyUpdated: '代理更新成功',
       proxyDeleted: '代理删除成功',
       proxyWorking: '代理连接正常',
-      proxyWorkingWithLatency: '代理连接正常，延迟 {latency}ms',
+      proxyWorkingWithLatency: '代理连接正常，延迟 {latency}',
       proxyTestFailed: '代理测试失败',
       qualityCheckDone: '质量检测完成：评分 {score}（{grade}）',
       qualityCheckFailed: '代理质量检测失败',
@@ -4571,9 +4573,9 @@ export default {
           model: '模型',
           requestCount: '请求数',
           avgTokensPerSec: '平均 Tokens/秒',
-          avgFirstTokenMs: '平均首 Token 延迟(ms)',
+          avgFirstTokenMs: '平均首 Token 延迟(s)',
           totalOutputTokens: '输出 Token 总数',
-          avgDurationMs: '平均时长(ms)',
+          avgDurationMs: '平均时长(s)',
           requestsWithFirstToken: '首 Token 样本数'
         }
       },
@@ -4608,7 +4610,7 @@ export default {
         memoryHigh: '内存使用率偏高 ({usage}%)',
         memoryHighImpact: '内存压力较大，需要关注',
         memoryHighAction: '监控内存趋势，检查是否有内存泄漏',
-        ttftHigh: '首 Token 时间偏高 ({ttft}ms)',
+        ttftHigh: '首 Token 时间偏高 ({ttft})',
         ttftHighImpact: '用户感知时长增加',
         ttftHighAction: '优化请求处理流程，减少前置逻辑耗时',
         // Error rate diagnostics
@@ -4928,8 +4930,8 @@ export default {
           successRate: '成功率 (%)',
           errorRate: '错误率 (%)',
           upstreamErrorRate: '上游错误率 (%)',
-          p95: 'P95 请求时长 (ms)',
-          p99: 'P99 请求时长 (ms)',
+          p95: 'P95 请求时长 (s)',
+          p99: 'P99 请求时长 (s)',
           cpu: 'CPU 使用率 (%)',
           memory: '内存使用率 (%)',
           queueDepth: '并发排队深度',
@@ -5214,7 +5216,7 @@ export default {
         totalRequests: '当前时间窗口内的总请求数和Token消耗量。',
         throughputTrend: '当前窗口内的请求/QPS 与 token/TPS 趋势。',
         switchRateTrend: '近5小时内账号切换次数 / 请求总数的趋势（平均切换次数）。',
-        latencyHistogram: '成功请求的请求时长分布（毫秒）。',
+        latencyHistogram: '成功请求的请求时长分布（秒）。',
         errorTrend: '错误趋势（SLA 口径排除业务限制；上游错误率排除 429/529）。',
         errorDistribution: '按状态码统计的错误分布。',
         upstreamErrors: '上游服务返回的错误，包括API提供商的错误响应（排除429/529限流错误）。',
@@ -6659,6 +6661,10 @@ export default {
     noActiveSubscription: '暂无有效订阅',
     tabTopUp: '充值',
     tabSubscribe: '订阅',
+    support: {
+      title: '充值联系客服',
+      openQQ: '打开 QQ 咨询',
+    },
     noPlans: '暂无可用订阅套餐',
     notAvailable: '充值功能暂未开放',
     confirmSubscription: '确认订阅',

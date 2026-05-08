@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAppStore } from '@/stores/app'
+import { DEFAULT_SITE_LOGO } from '@/constants/branding'
 import { getPublicSettings } from '@/api/auth'
 
 // Mock API 模块
@@ -268,7 +269,7 @@ describe('useAppStore', () => {
 
       expect(result).toBe(true)
       expect(store.siteName).toBe('TestSite')
-      expect(store.siteLogo).toBe('/logo.png')
+      expect(store.siteLogo).toBe(DEFAULT_SITE_LOGO)
       expect(store.siteVersion).toBe('1.0.0')
       expect(store.publicSettingsLoaded).toBe(true)
     })

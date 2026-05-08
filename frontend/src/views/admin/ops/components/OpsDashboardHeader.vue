@@ -9,7 +9,7 @@ import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { formatNumber } from '@/utils/format'
+import { formatDurationSeconds, formatNumber } from '@/utils/format'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -546,7 +546,7 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
   if (ttftP99 > 500) {
     report.push({
       type: 'warning',
-      message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftP99.toFixed(0) }),
+      message: t('admin.ops.diagnosis.ttftHigh', { ttft: formatDurationSeconds(ttftP99) }),
       impact: t('admin.ops.diagnosis.ttftHighImpact'),
       action: t('admin.ops.diagnosis.ttftHighAction')
     })
@@ -1293,35 +1293,30 @@ function handleToolbarRefresh() {
           </div>
           <div class="mt-2 flex items-baseline gap-2">
             <div class="text-3xl font-black text-gray-900 dark:text-white">
-              {{ durationP99Ms ?? '-' }}
+              {{ formatDurationSeconds(durationP99Ms) }}
             </div>
-            <span class="text-xs font-bold text-gray-400">ms (P99)</span>
+            <span class="text-xs font-bold text-gray-400">(P99)</span>
           </div>
           <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationP95Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatDurationSeconds(durationP95Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationP90Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatDurationSeconds(durationP90Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationP50Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatDurationSeconds(durationP50Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationAvgMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatDurationSeconds(durationAvgMs) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ durationMaxMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatDurationSeconds(durationMaxMs) }}</span>
             </div>
           </div>
         </div>
@@ -1344,35 +1339,30 @@ function handleToolbarRefresh() {
           </div>
           <div class="mt-2 flex items-baseline gap-2">
             <div class="text-3xl font-black" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP99Ms))">
-              {{ ttftP99Ms ?? '-' }}
+              {{ formatDurationSeconds(ttftP99Ms) }}
             </div>
-            <span class="text-xs font-bold text-gray-400">ms (P99)</span>
+            <span class="text-xs font-bold text-gray-400">(P99)</span>
           </div>
           <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP95Ms))">{{ ttftP95Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP95Ms))">{{ formatDurationSeconds(ttftP95Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP90Ms))">{{ ttftP90Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP90Ms))">{{ formatDurationSeconds(ttftP90Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP50Ms))">{{ ttftP50Ms ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP50Ms))">{{ formatDurationSeconds(ttftP50Ms) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftAvgMs))">{{ ttftAvgMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftAvgMs))">{{ formatDurationSeconds(ttftAvgMs) }}</span>
             </div>
             <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftMaxMs))">{{ ttftMaxMs ?? '-' }}</span>
-              <span class="text-gray-400">ms</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftMaxMs))">{{ formatDurationSeconds(ttftMaxMs) }}</span>
             </div>
           </div>
         </div>
@@ -1555,7 +1545,7 @@ function handleToolbarRefresh() {
           <div class="flex items-center justify-between gap-3">
             <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ hb.job_name }}</div>
             <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-              <span v-if="hb.last_duration_ms != null" class="font-mono">{{ hb.last_duration_ms }}ms</span>
+              <span v-if="hb.last_duration_ms != null" class="font-mono">{{ formatDurationSeconds(hb.last_duration_ms) }}</span>
               <span>{{ formatTimeShort(hb.updated_at) }}</span>
             </div>
           </div>

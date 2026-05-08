@@ -10,12 +10,12 @@ import (
 )
 
 type CommercialRelayPresetResult struct {
-	CreatedGroups int                      `json:"created_groups"`
-	UpdatedGroups int                      `json:"updated_groups"`
-	CreatedPlans  int                      `json:"created_plans"`
-	UpdatedPlans  int                      `json:"updated_plans"`
-	Groups        []CommercialPresetGroup  `json:"groups"`
-	Plans         []CommercialPresetPlan   `json:"plans"`
+	CreatedGroups int                     `json:"created_groups"`
+	UpdatedGroups int                     `json:"updated_groups"`
+	CreatedPlans  int                     `json:"created_plans"`
+	UpdatedPlans  int                     `json:"updated_plans"`
+	Groups        []CommercialPresetGroup `json:"groups"`
+	Plans         []CommercialPresetPlan  `json:"plans"`
 }
 
 type CommercialPresetGroup struct {
@@ -51,16 +51,16 @@ type commercialRelayGroupSpec struct {
 }
 
 type commercialRelayPlanSpec struct {
-	GroupName      string
-	Name           string
-	Description    string
-	Price          float64
-	OriginalPrice  *float64
-	ValidityDays   int
-	Features       string
-	ProductName    string
-	ForSale        bool
-	SortOrder      int
+	GroupName     string
+	Name          string
+	Description   string
+	Price         float64
+	OriginalPrice *float64
+	ValidityDays  int
+	Features      string
+	ProductName   string
+	ForSale       bool
+	SortOrder     int
 }
 
 func (s *PaymentConfigService) ApplyCommercialRelayPreset(ctx context.Context) (*CommercialRelayPresetResult, error) {
@@ -97,7 +97,7 @@ func (s *PaymentConfigService) ApplyCommercialRelayPreset(ctx context.Context) (
 		result.Groups = append(result.Groups, CommercialPresetGroup{
 			ID:              int64(entity.ID),
 			Name:            entity.Name,
-			Description:     entity.Description,
+			Description:     commercialRelayStringValue(entity.Description),
 			Platform:        entity.Platform,
 			RateMultiplier:  entity.RateMultiplier,
 			DailyLimitUSD:   entity.DailyLimitUsd,
@@ -320,85 +320,93 @@ func commercialRelayPresetGroups() []commercialRelayGroupSpec {
 func commercialRelayPresetPlans() []commercialRelayPlanSpec {
 	return []commercialRelayPlanSpec{
 		{
-			GroupName:     "relay-openai-trial",
-			Name:          "体验版",
-			Description:   "适合体验接入、少量日常调用和购买前验证稳定性。",
-			Price:         9.90,
-			ValidityDays:  30,
-			Features:      "独立试用池\n适合轻量体验\n严格限额控制",
-			ProductName:   "relay_openai_trial_30d",
-			ForSale:       true,
-			SortOrder:     10,
+			GroupName:    "relay-openai-trial",
+			Name:         "体验版",
+			Description:  "适合体验接入、少量日常调用和购买前验证稳定性。",
+			Price:        9.90,
+			ValidityDays: 30,
+			Features:     "独立试用池\n适合轻量体验\n严格限额控制",
+			ProductName:  "relay_openai_trial_30d",
+			ForSale:      true,
+			SortOrder:    10,
 		},
 		{
-			GroupName:     "relay-openai-basic",
-			Name:          "入门版",
-			Description:   "适合轻量办公、简单开发辅助和日常使用。",
-			Price:         39,
-			ValidityDays:  30,
-			Features:      "月总额度 $260\n轻量用户友好\n成本控制优先",
-			ProductName:   "relay_openai_basic_30d",
-			ForSale:       true,
-			SortOrder:     20,
+			GroupName:    "relay-openai-basic",
+			Name:         "入门版",
+			Description:  "适合轻量办公、简单开发辅助和日常使用。",
+			Price:        39,
+			ValidityDays: 30,
+			Features:     "月总额度 $260\n轻量用户友好\n成本控制优先",
+			ProductName:  "relay_openai_basic_30d",
+			ForSale:      true,
+			SortOrder:    20,
 		},
 		{
-			GroupName:     "relay-openai-standard",
-			Name:          "标准版",
-			Description:   "适合常规开发、脚本生成、文档处理和连续对话。",
-			Price:         99,
-			ValidityDays:  30,
-			Features:      "月总额度 $1000\n覆盖大多数用户场景\n推荐默认套餐",
-			ProductName:   "relay_openai_standard_30d",
-			ForSale:       true,
-			SortOrder:     30,
+			GroupName:    "relay-openai-standard",
+			Name:         "标准版",
+			Description:  "适合常规开发、脚本生成、文档处理和连续对话。",
+			Price:        99,
+			ValidityDays: 30,
+			Features:     "月总额度 $1000\n覆盖大多数用户场景\n推荐默认套餐",
+			ProductName:  "relay_openai_standard_30d",
+			ForSale:      true,
+			SortOrder:    30,
 		},
 		{
 			GroupName:     "relay-openai-pro",
 			Name:          "Pro",
-			Description:   "适合个人重度使用与高频开发场景，兼顾价格与额度。",
-			Price:         179,
+			Description:   "适合个人重度使用与高频开发场景，限时优惠价。",
+			Price:         249,
+			OriginalPrice: commercialRelayFloatPtr(299),
 			ValidityDays:  31,
-			Features:      "日额度 $80\n周额度 $400\n31 天有效",
+			Features:      "日额度 $80\n周额度 $400\n31 天有效\n限时优惠",
 			ProductName:   "relay_openai_pro_31d",
 			ForSale:       true,
 			SortOrder:     40,
 		},
 		{
-			GroupName:     "relay-openai-max",
-			Name:          "Max",
-			Description:   "适合持续重载开发任务和更高频调用需求。",
-			Price:         379,
-			ValidityDays:  31,
-			Features:      "日额度 $180\n周额度 $900\n31 天有效",
-			ProductName:   "relay_openai_max_31d",
-			ForSale:       true,
-			SortOrder:     50,
+			GroupName:    "relay-openai-max",
+			Name:         "Max",
+			Description:  "适合持续重载开发任务和更高频调用需求。",
+			Price:        379,
+			ValidityDays: 31,
+			Features:     "日额度 $180\n周额度 $900\n31 天有效",
+			ProductName:  "relay_openai_max_31d",
+			ForSale:      true,
+			SortOrder:    50,
 		},
 		{
-			GroupName:     "relay-openai-team",
-			Name:          "团队版",
-			Description:   "适合小团队共享、持续开发和稳定高频调用。",
-			Price:         499,
-			ValidityDays:  30,
-			Features:      "月总额度 $5600\n团队协作场景\n优先级更高的号池",
-			ProductName:   "relay_openai_team_30d",
-			ForSale:       true,
-			SortOrder:     60,
+			GroupName:    "relay-openai-team",
+			Name:         "团队版",
+			Description:  "适合小团队共享、持续开发和稳定高频调用。",
+			Price:        499,
+			ValidityDays: 30,
+			Features:     "月总额度 $5600\n团队协作场景\n优先级更高的号池",
+			ProductName:  "relay_openai_team_30d",
+			ForSale:      true,
+			SortOrder:    60,
 		},
 		{
-			GroupName:     "relay-openai-enterprise",
-			Name:          "企业版",
-			Description:   "适合企业客户、定制支持和更高稳定性保障。",
-			Price:         999,
-			ValidityDays:  30,
-			Features:      "月总额度 $10500\n企业专属号池\n建议私聊交付",
-			ProductName:   "relay_openai_enterprise_30d",
-			ForSale:       false,
-			SortOrder:     70,
+			GroupName:    "relay-openai-enterprise",
+			Name:         "企业版",
+			Description:  "适合企业客户、定制支持和更高稳定性保障。",
+			Price:        999,
+			ValidityDays: 30,
+			Features:     "月总额度 $10500\n企业专属号池\n建议私聊交付",
+			ProductName:  "relay_openai_enterprise_30d",
+			ForSale:      false,
+			SortOrder:    70,
 		},
 	}
 }
 
 func commercialRelayFloatPtr(v float64) *float64 {
 	return &v
+}
+
+func commercialRelayStringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

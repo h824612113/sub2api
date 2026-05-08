@@ -103,7 +103,9 @@ const renderedContent = computed(() => {
   const content = announcementStore.currentPopup?.content
   if (!content) return ''
   const html = marked.parse(content) as string
-  return DOMPurify.sanitize(html)
+  return DOMPurify.sanitize(html, {
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|mqqwpa|tencent):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  })
 })
 
 function handleDismiss() {

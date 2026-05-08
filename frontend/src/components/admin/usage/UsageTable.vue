@@ -360,7 +360,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatDateTime, formatReasoningEffort } from '@/utils/format'
+import { formatDateTime, formatDurationSeconds, formatReasoningEffort } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
@@ -441,9 +441,7 @@ const formatUserAgent = (ua: string): string => {
 }
 
 const formatDuration = (ms: number | null | undefined): string => {
-  if (ms == null) return '-'
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  return formatDurationSeconds(ms)
 }
 
 // Cost tooltip functions

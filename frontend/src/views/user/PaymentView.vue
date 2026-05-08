@@ -36,6 +36,28 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
+            <div v-if="supportQQ" class="card border-blue-100 bg-blue-50/70 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="rounded-lg bg-blue-100 p-2 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300">
+                    <Icon name="chat" size="md" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-semibold text-blue-900 dark:text-blue-100">{{ t('payment.support.title') }}</p>
+                    <p class="mt-0.5 text-sm text-blue-700 dark:text-blue-300">QQ: {{ supportQQ }}</p>
+                  </div>
+                </div>
+                <a
+                  :href="supportQQUrl"
+                  rel="noopener"
+                  class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+                  @click.prevent="openQQSupport"
+                >
+                  {{ t('payment.support.openQQ') }}
+                  <Icon name="externalLink" size="sm" />
+                </a>
+              </div>
+            </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -376,6 +398,42 @@ async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promi
 }
 
 const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
+const supportQQ = computed(() => appStore.contactQQ.trim())
+const supportQQClientUrl = computed(() => buildQQClientUrl(supportQQ.value))
+const supportQQUrl = computed(() =>
+  `https://wpa.qq.com/msgrd?v=3&uin=${encodeURIComponent(supportQQ.value)}&site=qq&menu=yes`
+)
+
+function buildQQClientUrl(qq: string): string {
+  const encoded = encodeURIComponent(qq)
+  if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)) {
+    return `mqqwpa://im/chat?chat_type=wpa&uin=${encoded}&version=1&src_type=web`
+  }
+  return `tencent://message/?uin=${encoded}&Site=qq&Menu=yes`
+}
+
+function openQQSupport() {
+  if (!supportQQ.value || typeof window === 'undefined') return
+
+  const fallbackUrl = supportQQUrl.value
+  const startedAt = Date.now()
+  let pageHidden = false
+
+  const markHidden = () => {
+    pageHidden = true
+  }
+  window.addEventListener('blur', markHidden, { once: true })
+  document.addEventListener('visibilitychange', markHidden, { once: true })
+  window.location.href = supportQQClientUrl.value
+
+  window.setTimeout(() => {
+    window.removeEventListener('blur', markHidden)
+    document.removeEventListener('visibilitychange', markHidden)
+    if (!pageHidden && Date.now() - startedAt < 2500) {
+      window.open(fallbackUrl, '_blank', 'noopener')
+    }
+  }, 1200)
+}
 
 function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
   if (typeof window === 'undefined' || !snapshot.orderId) return

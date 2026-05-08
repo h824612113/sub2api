@@ -137,7 +137,7 @@ import { saveAs } from 'file-saver'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admin'; import { adminUsageAPI } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatReasoningEffort } from '@/utils/format'
+import { formatDurationSeconds, formatReasoningEffort } from '@/utils/format'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
@@ -495,7 +495,9 @@ const exportToExcel = async () => {
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
         log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
-        ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms,
+        ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6),
+        formatDurationSeconds(log.first_token_ms),
+        formatDurationSeconds(log.duration_ms),
         log.request_id || '', log.user_agent || '', log.ip_address || ''
       ])
       if (rows.length) {

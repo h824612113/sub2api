@@ -468,6 +468,7 @@ import ModelDistributionChart from '@/components/charts/ModelDistributionChart.v
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
+import { formatDurationSeconds } from '@/utils/format'
 import type { Account, AccountUsageStatsResponse } from '@/types'
 
 ChartJS.register(
@@ -705,9 +706,6 @@ const formatTokens = (value: number): string => {
 }
 
 const formatDuration = (ms: number): string => {
-  if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(2)}s`
-  }
-  return `${Math.round(ms)}ms`
+  return formatDurationSeconds(ms)
 }
 </script>

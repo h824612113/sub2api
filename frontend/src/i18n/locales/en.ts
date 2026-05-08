@@ -935,16 +935,16 @@ export default {
       groupName: 'Group',
       primaryModel: 'Primary Model',
       availability7d: '7d Availability',
-      latency: 'Latency (ms)'
+      latency: 'Latency (s)'
     },
     detailColumns: {
       model: 'Model',
       latestStatus: 'Latest Status',
-      latestLatency: 'Latest Latency (ms)',
+      latestLatency: 'Latest Latency (s)',
       availability7d: '7d Availability',
       availability15d: '15d Availability',
       availability30d: '30d Availability',
-      avgLatency7d: '7d Avg Latency (ms)'
+      avgLatency7d: '7d Avg Latency (s)'
     },
     empty: {
       title: 'No channels available',
@@ -1224,6 +1224,8 @@ export default {
       unbindAction: 'Unbind',
       unbindSuccess: '{providerName} unbound',
       boundCount: '{count} linked records',
+      contactSupportTitle: 'Contact Support',
+      contactSupportQQ: '3969850287',
       status: {
         bound: 'Bound',
         notBound: 'Not bound',
@@ -2390,7 +2392,7 @@ export default {
       apiKeyStatusFrozen: 'Frozen',
       apiKeyStatusUnknown: 'Untested',
       apiKeyFailureCount: '{count} failures',
-      apiKeyLatency: '{ms} ms',
+      apiKeyLatency: '{ms}',
       apiKeyHTTPStatus: 'HTTP {status}',
       apiKeyFrozenUntil: 'Frozen until {time}',
       apiKeyLastChecked: 'Checked at {time}',
@@ -2452,7 +2454,7 @@ export default {
       unbanFailed: 'Failed to unban user',
       inputDetailTitle: 'Input Summary Detail',
       inputDetailContent: 'Full Content',
-      queueDelay: 'Queued {ms} ms',
+      queueDelay: 'Queued {ms}',
       allGroups: 'All Groups',
       allGroupsHint: 'Auditing all groups',
       selectedGroupsHint: 'Auditing selected groups',
@@ -2555,7 +2557,7 @@ export default {
         provider: 'Provider',
         primaryModel: 'Primary Model',
         availability7d: '7d Availability',
-        latency: 'Latency (ms)',
+        latency: 'Latency (s)',
         enabled: 'Enabled',
         actions: 'Actions'
       },
@@ -3976,7 +3978,7 @@ export default {
       proxyUpdated: 'Proxy updated successfully',
       proxyDeleted: 'Proxy deleted successfully',
       proxyWorking: 'Proxy is working!',
-      proxyWorkingWithLatency: 'Proxy is working! Latency: {latency}ms',
+      proxyWorkingWithLatency: 'Proxy is working! Latency: {latency}',
       proxyTestFailed: 'Proxy test failed',
       qualityCheckDone: 'Quality check completed: score {score} ({grade})',
       qualityCheckFailed: 'Failed to run proxy quality check',
@@ -4413,9 +4415,9 @@ export default {
           model: 'Model',
           requestCount: 'Requests',
           avgTokensPerSec: 'Avg Tokens/sec',
-          avgFirstTokenMs: 'Avg First Token Latency (ms)',
+          avgFirstTokenMs: 'Avg First Token Latency (s)',
           totalOutputTokens: 'Total Output Tokens',
-          avgDurationMs: 'Avg Duration (ms)',
+          avgDurationMs: 'Avg Duration (s)',
           requestsWithFirstToken: 'Requests With First Token'
         }
       },
@@ -4446,7 +4448,7 @@ export default {
         memoryHigh: 'Memory usage elevated ({usage}%)',
         memoryHighImpact: 'Memory pressure is high, needs attention',
         memoryHighAction: 'Monitor memory trends, check for memory leaks',
-        ttftHigh: 'Time to first token elevated ({ttft}ms)',
+        ttftHigh: 'Time to first token elevated ({ttft})',
         ttftHighImpact: 'User perceived latency increased',
         ttftHighAction: 'Optimize request processing flow, reduce pre-processing time',
         // Error rate diagnostics
@@ -4766,8 +4768,8 @@ export default {
           successRate: 'Success Rate (%)',
           errorRate: 'Error Rate (%)',
           upstreamErrorRate: 'Upstream Error Rate (%)',
-          p95: 'P95 Latency (ms)',
-          p99: 'P99 Latency (ms)',
+          p95: 'P95 Latency (s)',
+          p99: 'P99 Latency (s)',
           cpu: 'CPU Usage (%)',
           memory: 'Memory Usage (%)',
           queueDepth: 'Concurrency Queue Depth',
@@ -4783,8 +4785,8 @@ export default {
           successRate: 'Percentage of successful requests in the window (0-100).',
           errorRate: 'Percentage of failed requests in the window (0-100).',
           upstreamErrorRate: 'Percentage of upstream failures in the window (0-100).',
-          p95: 'P95 request latency within the window (ms).',
-          p99: 'P99 request latency within the window (ms).',
+          p95: 'P95 request latency within the window (s).',
+          p99: 'P99 request latency within the window (s).',
           cpu: 'Current instance CPU usage (0-100).',
           memory: 'Current instance memory usage (0-100).',
           queueDepth: 'Concurrency queue depth within the window (queued requests).',
@@ -5051,7 +5053,7 @@ export default {
         totalRequests: 'Total number of requests (including both successful and failed requests) in the selected time window.',
         throughputTrend: 'Requests/QPS + Tokens/TPS in the selected window.',
         switchRateTrend: 'Trend of account switches / total requests over the last 5 hours (avg switches).',
-        latencyHistogram: 'Request duration distribution (ms) for successful requests.',
+        latencyHistogram: 'Request duration distribution (s) for successful requests.',
         errorTrend: 'Error counts over time (SLA scope excludes business limits; upstream excludes 429/529).',
         errorDistribution: 'Error distribution by status code.',
         goroutines:
@@ -6474,6 +6476,10 @@ export default {
     noActiveSubscription: 'No active subscription',
     tabTopUp: 'Top Up',
     tabSubscribe: 'Subscribe',
+    support: {
+      title: 'Contact support for recharge',
+      openQQ: 'Open QQ Chat',
+    },
     noPlans: 'No subscription plans available',
     notAvailable: 'Top-up is currently unavailable',
     confirmSubscription: 'Confirm Subscription',

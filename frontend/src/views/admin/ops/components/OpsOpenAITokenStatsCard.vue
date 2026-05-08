@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { opsAPI, type OpsOpenAITokenStatsResponse, type OpsOpenAITokenStatsTimeRange } from '@/api/admin/ops'
-import { formatNumber } from '@/utils/format'
+import { formatDurationSeconds, formatNumber } from '@/utils/format'
 
 interface Props {
   platformFilter?: string
@@ -74,6 +74,10 @@ function formatRate(v?: number | null): string {
 function formatInt(v?: number | null): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '-'
   return formatNumber(Math.round(v))
+}
+
+function formatDuration(v?: number | null): string {
+  return formatDurationSeconds(v)
 }
 
 function buildParams() {
@@ -232,9 +236,9 @@ function onNextPage() {
                 <td class="px-2 py-2 font-medium">{{ row.model }}</td>
                 <td class="px-2 py-2">{{ formatInt(row.request_count) }}</td>
                 <td class="px-2 py-2">{{ formatRate(row.avg_tokens_per_sec) }}</td>
-                <td class="px-2 py-2">{{ formatRate(row.avg_first_token_ms) }}</td>
+                <td class="px-2 py-2">{{ formatDuration(row.avg_first_token_ms) }}</td>
                 <td class="px-2 py-2">{{ formatInt(row.total_output_tokens) }}</td>
-                <td class="px-2 py-2">{{ formatInt(row.avg_duration_ms) }}</td>
+                <td class="px-2 py-2">{{ formatDuration(row.avg_duration_ms) }}</td>
                 <td class="px-2 py-2">{{ formatInt(row.requests_with_first_token) }}</td>
               </tr>
             </tbody>

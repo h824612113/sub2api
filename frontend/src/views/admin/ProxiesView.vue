@@ -228,7 +228,7 @@
                 v-else-if="typeof row.latency_ms === 'number'"
                 :class="['badge', row.latency_ms < 200 ? 'badge-success' : 'badge-warning']"
               >
-                {{ row.latency_ms }}ms
+                {{ formatDurationSeconds(row.latency_ms) }}
               </span>
               <span v-else class="text-sm text-gray-400">-</span>
               <div
@@ -779,7 +779,7 @@
             <div>{{ t('admin.proxies.qualityCountry') }}: {{ qualityReport.country || '-' }}</div>
             <div>
               {{ t('admin.proxies.qualityBaseLatency') }}:
-              {{ typeof qualityReport.base_latency_ms === 'number' ? `${qualityReport.base_latency_ms}ms` : '-' }}
+              {{ typeof qualityReport.base_latency_ms === 'number' ? formatDurationSeconds(qualityReport.base_latency_ms) : '-' }}
             </div>
             <div>{{ t('admin.proxies.qualityCheckedAt') }}: {{ new Date(qualityReport.checked_at * 1000).toLocaleString() }}</div>
           </div>
@@ -804,7 +804,7 @@
                 </td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ item.http_status ?? '-' }}</td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">
-                  {{ typeof item.latency_ms === 'number' ? `${item.latency_ms}ms` : '-' }}
+                  {{ typeof item.latency_ms === 'number' ? formatDurationSeconds(item.latency_ms) : '-' }}
                 </td>
                 <td class="px-3 py-2 text-gray-600 dark:text-gray-300">
                   <span>{{ item.message || '-' }}</span>
@@ -893,6 +893,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { formatDurationSeconds } from '@/utils/format'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1431,7 +1432,7 @@ const runProxyTest = async (proxyId: number, notify: boolean) => {
     if (notify) {
       if (result.success) {
         const message = result.latency_ms
-          ? t('admin.proxies.proxyWorkingWithLatency', { latency: result.latency_ms })
+          ? t('admin.proxies.proxyWorkingWithLatency', { latency: formatDurationSeconds(result.latency_ms) })
           : t('admin.proxies.proxyWorking')
         appStore.showSuccess(message)
       } else {

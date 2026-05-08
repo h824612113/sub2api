@@ -220,7 +220,7 @@
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
                       <div>{{ latencyText(row.upstream_latency_ms) }}</div>
                       <div v-if="row.queue_delay_ms !== null && row.queue_delay_ms !== undefined" class="text-xs text-gray-400">
-                        {{ t('admin.riskControl.queueDelay', { ms: row.queue_delay_ms }) }}
+                        {{ t('admin.riskControl.queueDelay', { ms: formatDurationSeconds(row.queue_delay_ms) }) }}
                       </div>
                     </td>
                     <td class="w-[320px] max-w-sm px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
@@ -836,7 +836,7 @@ import type {
 import type { AdminGroup, SelectOption } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { formatDateTime as formatDateTimeValue } from '@/utils/format'
+import { formatDateTime as formatDateTimeValue, formatDurationSeconds } from '@/utils/format'
 
 type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
@@ -1603,8 +1603,7 @@ function percentWidth(value: number): string {
 }
 
 function latencyText(value: number | null): string {
-  if (value === null || value === undefined) return '-'
-  return `${value} ms`
+  return formatDurationSeconds(value)
 }
 
 function apiKeyRowKey(row: ContentModerationAPIKeyStatus, index: number): string {
@@ -1645,7 +1644,7 @@ function apiKeyStatusMeta(row: ContentModerationAPIKeyStatus): string {
   const parts: string[] = []
   parts.push(t('admin.riskControl.apiKeyFailureCount', { count: row.failure_count || 0 }))
   if (row.last_latency_ms > 0) {
-    parts.push(t('admin.riskControl.apiKeyLatency', { ms: row.last_latency_ms }))
+    parts.push(t('admin.riskControl.apiKeyLatency', { ms: formatDurationSeconds(row.last_latency_ms) }))
   }
   if (row.last_http_status > 0) {
     parts.push(t('admin.riskControl.apiKeyHTTPStatus', { status: row.last_http_status }))

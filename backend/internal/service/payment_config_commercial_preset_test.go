@@ -84,13 +84,13 @@ func TestApplyCommercialRelayPresetIsIdempotentAndRestoresPresetValues(t *testin
 		t.Fatalf("first ApplyCommercialRelayPreset returned error: %v", err)
 	}
 
-	if _, err := client.Group.Update().
+	if err := client.Group.Update().
 		Where(group.NameEQ("relay-openai-standard"), group.DeletedAtIsNil()).
 		SetRateMultiplier(9.99).
 		Exec(ctx); err != nil {
 		t.Fatalf("mutate preset group: %v", err)
 	}
-	if _, err := client.SubscriptionPlan.Update().
+	if err := client.SubscriptionPlan.Update().
 		Where(subscriptionplan.ProductNameEQ("relay_openai_pro_31d")).
 		SetPrice(1).
 		Exec(ctx); err != nil {
@@ -125,8 +125,11 @@ func TestApplyCommercialRelayPresetIsIdempotentAndRestoresPresetValues(t *testin
 	if err != nil {
 		t.Fatalf("query pro plan after reapply: %v", err)
 	}
-	if proPlan.Price != 179 {
-		t.Fatalf("pro plan price after reapply = %v, want 179", proPlan.Price)
+	if proPlan.Price != 249 {
+		t.Fatalf("pro plan price after reapply = %v, want 249", proPlan.Price)
+	}
+	if proPlan.OriginalPrice == nil || *proPlan.OriginalPrice != 299 {
+		t.Fatalf("pro plan original price after reapply = %v, want 299", proPlan.OriginalPrice)
 	}
 	if proPlan.ValidityDays != 31 {
 		t.Fatalf("pro plan validity days after reapply = %d, want 31", proPlan.ValidityDays)

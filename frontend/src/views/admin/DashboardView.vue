@@ -297,6 +297,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { formatDurationSeconds } from '@/utils/format'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
@@ -549,10 +550,7 @@ const formatCost = (value: number): string => {
 }
 
 const formatDuration = (ms: number): string => {
-  if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(2)}s`
-  }
-  return `${Math.round(ms)}ms`
+  return formatDurationSeconds(ms)
 }
 
 const goToUserUsage = (item: UserSpendingRankingItem) => {

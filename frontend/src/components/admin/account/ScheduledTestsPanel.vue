@@ -390,7 +390,7 @@
 
                     <!-- Latency -->
                     <span v-if="result.latency_ms > 0" class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ result.latency_ms }}ms
+                      {{ formatDurationSeconds(result.latency_ms) }}
                     </span>
                   </div>
 
@@ -474,7 +474,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import { Icon } from '@/components/icons'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import type { ScheduledTestPlan, ScheduledTestResult } from '@/types'
 
 const { t } = useI18n()

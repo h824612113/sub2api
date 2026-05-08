@@ -50,13 +50,13 @@
 import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import Icon from '@/components/icons/Icon.vue'
+import { formatDurationSeconds } from '@/utils/format'
 
 defineProps<{ stats: AdminUsageStatsResponse | null }>()
 
 const { t } = useI18n()
 
-const formatDuration = (ms: number) =>
-  ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`
+const formatDuration = (ms: number) => formatDurationSeconds(ms)
 
 const formatTokens = (value: number) => {
   if (value >= 1e9) return (value / 1e9).toFixed(2) + 'B'

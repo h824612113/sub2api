@@ -93,6 +93,14 @@ export function formatBytes(bytes: number, decimals: number = 2): string {
 }
 
 /**
+ * 格式化毫秒时长为秒，适合后台耗时展示。
+ */
+export function formatDurationSeconds(ms: number | null | undefined, fractionDigits = 2): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '-'
+  return `${(ms / 1000).toFixed(fractionDigits)}s`
+}
+
+/**
  * 格式化日期
  * @param date 日期字符串或 Date 对象
  * @param options Intl.DateTimeFormatOptions
