@@ -74,6 +74,29 @@
 
         <!-- Code Blocks (Stacked for multi-file platforms) -->
         <div class="space-y-4">
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800/60">
+            <div class="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {{ t('keys.useKeyModal.requestUrl') }}
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <code class="min-w-0 flex-1 truncate rounded-md bg-white px-3 py-2 text-sm text-gray-900 ring-1 ring-gray-200 dark:bg-dark-900 dark:text-gray-100 dark:ring-dark-700">
+                {{ requestUrl }}
+              </code>
+              <button
+                type="button"
+                @click="copyRequestUrl"
+                class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+                :class="copiedRequestUrl
+                  ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400'
+                  : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100 hover:text-gray-900 dark:bg-dark-900 dark:text-gray-300 dark:ring-dark-700 dark:hover:bg-dark-700 dark:hover:text-white'"
+              >
+                <Icon v-if="copiedRequestUrl" name="check" size="sm" />
+                <Icon v-else name="clipboard" size="sm" />
+                {{ copiedRequestUrl ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+              </button>
+            </div>
+          </div>
+
           <div
             v-for="(file, index) in currentFiles"
             :key="index"
@@ -173,8 +196,11 @@ const { t } = useI18n()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
+const copiedRequestUrl = ref(false)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
+
+const requestUrl = computed(() => props.baseUrl || window.location.origin)
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
@@ -1047,6 +1073,16 @@ const copyContent = async (content: string, index: number) => {
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
+    }, 2000)
+  }
+}
+
+const copyRequestUrl = async () => {
+  const success = await clipboardCopy(requestUrl.value, t('keys.copied'))
+  if (success) {
+    copiedRequestUrl.value = true
+    setTimeout(() => {
+      copiedRequestUrl.value = false
     }, 2000)
   }
 }
