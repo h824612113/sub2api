@@ -67,7 +67,7 @@
               <button
                 v-if="subscription.status === 'active'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
-                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+                @click="goToSubscriptionCardShop"
               >
                 {{ t('payment.renewNow') }}
               </button>
@@ -248,7 +248,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
@@ -268,11 +267,15 @@ function platformAccentDotClass(p: string): string {
 }
 
 const { t } = useI18n()
-const router = useRouter()
 const appStore = useAppStore()
+const SUBSCRIPTION_CARD_SHOP_URL = 'https://pay.ldxp.cn/shop/7HOK84LL'
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+
+function goToSubscriptionCardShop() {
+  window.location.href = SUBSCRIPTION_CARD_SHOP_URL
+}
 
 async function loadSubscriptions() {
   try {

@@ -307,6 +307,7 @@ const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
+const SUBSCRIPTION_CARD_SHOP_URL = 'https://pay.ldxp.cn/shop/7HOK84LL'
 
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
@@ -695,15 +696,13 @@ const planValiditySuffix = computed(() => {
 })
 
 function selectPlan(plan: SubscriptionPlan) {
-  selectedPlan.value = plan
-  errorMessage.value = ''
+  void plan
+  window.location.href = SUBSCRIPTION_CARD_SHOP_URL
 }
 
 function selectPlanFromModal(plan: SubscriptionPlan) {
-  showRenewalModal.value = false
-  renewGroupId.value = null
-  selectedPlan.value = plan
-  errorMessage.value = ''
+  void plan
+  window.location.href = SUBSCRIPTION_CARD_SHOP_URL
 }
 
 function closeRenewalModal() {
