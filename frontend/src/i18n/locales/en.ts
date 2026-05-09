@@ -399,7 +399,7 @@ export default {
     rememberMe: 'Remember me',
     dontHaveAccount: "Don't have an account?",
     alreadyHaveAccount: 'Already have an account?',
-    registrationDisabled: 'Registration is currently disabled. Please contact the administrator.',
+    registrationDisabled: 'Registration is currently disabled. Please contact the administrator QQ:3969850287.',
     emailLabel: 'Email',
     emailPlaceholder: 'Enter your email',
     passwordLabel: 'Password',

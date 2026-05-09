@@ -697,12 +697,12 @@ const planValiditySuffix = computed(() => {
 
 function selectPlan(plan: SubscriptionPlan) {
   void plan
-  window.location.href = SUBSCRIPTION_CARD_SHOP_URL
+  window.open(SUBSCRIPTION_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
 }
 
 function selectPlanFromModal(plan: SubscriptionPlan) {
   void plan
-  window.location.href = SUBSCRIPTION_CARD_SHOP_URL
+  window.open(SUBSCRIPTION_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
 }
 
 function closeRenewalModal() {

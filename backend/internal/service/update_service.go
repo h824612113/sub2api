@@ -108,6 +108,10 @@ type GitHubAsset struct {
 
 // CheckUpdate checks for available updates
 func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
+	if updatesDisabled() {
+		return s.disabledUpdateInfo(), nil
+	}
+
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
@@ -140,6 +144,10 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if updatesDisabled() {
+		return fmt.Errorf("online updates are disabled for this deployment")
+	}
+
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -304,6 +312,21 @@ func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, er
 		Cached:    false,
 		BuildType: s.buildType,
 	}, nil
+}
+
+func (s *UpdateService) disabledUpdateInfo() *UpdateInfo {
+	return &UpdateInfo{
+		CurrentVersion: s.currentVersion,
+		LatestVersion:  s.currentVersion,
+		HasUpdate:      false,
+		Warning:        "Online updates are disabled for this deployment.",
+		BuildType:      s.buildType,
+	}
+}
+
+func updatesDisabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("UPDATE_DISABLED")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
 func (s *UpdateService) downloadFile(ctx context.Context, downloadURL, dest string) error {
