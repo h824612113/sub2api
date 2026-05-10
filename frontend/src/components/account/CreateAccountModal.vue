@@ -2461,7 +2461,7 @@
           <input
             v-model.number="form.priority"
             type="number"
-            min="1"
+            min="0"
             class="input"
             data-tour="account-form-priority"
           />
