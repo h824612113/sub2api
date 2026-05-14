@@ -236,6 +236,10 @@ type OpenAIForwardResult struct {
 	FirstTokenMs    *int
 	ImageCount      int
 	ImageSize       string
+	// UsageIncompleteReason is set when the upstream response completed but
+	// did not include billable usage. Handlers still return the user response,
+	// but RecordUsage must not persist a misleading 0-token success row.
+	UsageIncompleteReason string
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -5210,6 +5214,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
+	}
+	if reason := strings.TrimSpace(result.UsageIncompleteReason); reason != "" {
+		logger.LegacyPrintf("service.openai_gateway", "Skip OpenAI usage record: %s request_id=%s model=%s", reason, result.RequestID, result.Model)
+		return nil
 	}
 
 	apiKey := input.APIKey

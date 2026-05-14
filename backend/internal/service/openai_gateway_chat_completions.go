@@ -367,7 +367,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai chat_completions buffered", requestID)
+	finalResponse, usage, usageIncompleteReason, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai chat_completions buffered", requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -389,13 +389,14 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:             requestID,
+		Usage:                 usage,
+		Model:                 originalModel,
+		BillingModel:          billingModel,
+		UpstreamModel:         upstreamModel,
+		Stream:                false,
+		Duration:              time.Since(startTime),
+		UsageIncompleteReason: usageIncompleteReason,
 	}, nil
 }
 
@@ -429,6 +430,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	usageIncompleteReason := ""
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -453,14 +455,15 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:     requestID,
-			Usage:         usage,
-			Model:         originalModel,
-			BillingModel:  billingModel,
-			UpstreamModel: upstreamModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
+			RequestID:             requestID,
+			Usage:                 usage,
+			Model:                 originalModel,
+			BillingModel:          billingModel,
+			UpstreamModel:         upstreamModel,
+			Stream:                true,
+			Duration:              time.Since(startTime),
+			FirstTokenMs:          firstTokenMs,
+			UsageIncompleteReason: usageIncompleteReason,
 		}
 	}
 
@@ -482,8 +485,18 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 		// 仅按兼容转换器支持的终止事件提取 usage，避免无意扩大事件语义。
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
-		if isTerminalEvent && event.Response != nil && event.Response.Usage != nil {
-			usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+		if isTerminalEvent && event.Response != nil {
+			if event.Response.Usage != nil {
+				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+			} else {
+				usageIncompleteReason = "terminal event missing usage"
+				logger.L().Warn("openai chat_completions stream: terminal event missing usage",
+					zap.String("request_id", requestID),
+					zap.String("event_type", event.Type),
+					zap.String("response_id", event.Response.ID),
+					zap.String("response_status", event.Response.Status),
+				)
+			}
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)

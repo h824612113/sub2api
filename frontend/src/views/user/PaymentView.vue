@@ -123,12 +123,14 @@
                   <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ selectedPlan.name }}</h3>
                 </div>
                 <!-- Price -->
-                <div class="flex items-baseline gap-2">
-                  <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
+                <div>
+                  <div class="flex items-baseline gap-2">
+                    <span :class="['text-3xl font-bold', planTextClass]">¥{{ selectedPlan.price }}</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix }}</span>
+                  </div>
+                  <div v-if="selectedPlan.original_price" class="mt-1 text-sm text-gray-400 line-through dark:text-gray-500">
                     ¥{{ selectedPlan.original_price }}
-                  </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">¥{{ selectedPlan.price }}</span>
-                  <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix }}</span>
+                  </div>
                 </div>
                 <!-- Description -->
                 <p v-if="selectedPlan.description" class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
@@ -690,8 +692,8 @@ const renewalPlans = computed(() => {
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
   const u = selectedPlan.value.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
+  if (u === 'month' || u === 'months') return t('payment.perMonth')
+  if (u === 'year' || u === 'years') return t('payment.perYear')
   return `${selectedPlan.value.validity_days}${t('payment.days')}`
 })
 

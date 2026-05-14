@@ -24,14 +24,14 @@
             {{ plan.description }}
           </p>
         </div>
-        <div class="shrink-0 text-right">
-          <div class="flex items-baseline gap-1">
-            <span class="text-xs text-gray-400 dark:text-dark-500">$</span>
+        <div class="shrink-0 min-w-[88px] text-left">
+          <div class="flex items-baseline gap-1 whitespace-nowrap">
+            <span class="text-xs text-gray-400 dark:text-dark-500">¥</span>
             <span :class="['text-2xl font-extrabold tracking-tight', textClass]">{{ plan.price }}</span>
+            <span class="text-[11px] text-gray-400 dark:text-dark-500">/ {{ validitySuffix }}</span>
           </div>
-          <span class="text-[11px] text-gray-400 dark:text-dark-500">/ {{ validitySuffix }}</span>
-          <div v-if="plan.original_price" class="mt-0.5 flex items-center justify-end gap-1.5">
-            <span class="text-xs text-gray-400 line-through dark:text-dark-500">${{ plan.original_price }}</span>
+          <div v-if="plan.original_price" class="mt-0.5 flex items-center gap-1.5">
+            <span class="text-xs text-gray-400 line-through dark:text-dark-500">¥{{ plan.original_price }}</span>
             <span :class="['rounded px-1 py-0.5 text-[10px] font-semibold', discountClass]">{{ discountText }}</span>
           </div>
         </div>
@@ -154,8 +154,8 @@ const modelScopeLabels = computed(() => {
 
 const validitySuffix = computed(() => {
   const u = props.plan.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
+  if (u === 'month' || u === 'months') return t('payment.perMonth')
+  if (u === 'year' || u === 'years') return t('payment.perYear')
   return `${props.plan.validity_days}${t('payment.days')}`
 })
 </script>

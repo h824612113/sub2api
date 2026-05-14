@@ -151,7 +151,9 @@ type AssignSubscriptionInput struct {
 	Notes        string
 }
 
-// AssignSubscription 分配订阅给用户（不允许重复分配）
+// AssignSubscription 分配订阅给用户。
+// 对于已过期的历史订阅记录，会按本次有效期续期并恢复为 active；
+// 对于仍有效的现有订阅，保留现有幂等/冲突语义。
 func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
 	sub, _, err := s.assignSubscriptionWithReuse(ctx, input)
 	if err != nil {
@@ -193,74 +195,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 
 	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
-		now := time.Now()
-		var newExpiresAt time.Time
-
-		if existingSub.ExpiresAt.After(now) {
-			// 未过期：从当前过期时间累加
-			newExpiresAt = existingSub.ExpiresAt.AddDate(0, 0, validityDays)
-		} else {
-			// 已过期：从当前时间开始计算
-			newExpiresAt = now.AddDate(0, 0, validityDays)
-		}
-
-		// 确保不超过最大过期时间
-		if newExpiresAt.After(MaxExpiresAt) {
-			newExpiresAt = MaxExpiresAt
-		}
-
-		// 开启事务：ExtendExpiry + UpdateStatus + UpdateNotes 在同一事务中完成
-		tx, err := s.entClient.Tx(ctx)
-		if err != nil {
-			return nil, false, fmt.Errorf("begin transaction: %w", err)
-		}
-		txCtx := dbent.NewTxContext(ctx, tx)
-
-		// 更新过期时间
-		if err := s.userSubRepo.ExtendExpiry(txCtx, existingSub.ID, newExpiresAt); err != nil {
-			_ = tx.Rollback()
-			return nil, false, fmt.Errorf("extend subscription: %w", err)
-		}
-
-		// 如果订阅已过期或被暂停，恢复为active状态
-		if existingSub.Status != SubscriptionStatusActive {
-			if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
-				_ = tx.Rollback()
-				return nil, false, fmt.Errorf("update subscription status: %w", err)
-			}
-		}
-
-		// 追加备注
-		if input.Notes != "" {
-			newNotes := existingSub.Notes
-			if newNotes != "" {
-				newNotes += "\n"
-			}
-			newNotes += input.Notes
-			if err := s.userSubRepo.UpdateNotes(txCtx, existingSub.ID, newNotes); err != nil {
-				_ = tx.Rollback()
-				return nil, false, fmt.Errorf("update subscription notes: %w", err)
-			}
-		}
-
-		// 提交事务
-		if err := tx.Commit(); err != nil {
-			return nil, false, fmt.Errorf("commit transaction: %w", err)
-		}
-
-		// 失效订阅缓存
-		s.InvalidateSubCache(input.UserID, input.GroupID)
-		if s.billingCacheService != nil {
-			userID, groupID := input.UserID, input.GroupID
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-			}()
-		}
-
-		// 返回更新后的订阅
-		sub, err := s.userSubRepo.GetByID(ctx, existingSub.ID)
+		sub, err := s.extendExistingSubscriptionFromInput(ctx, existingSub, input, validityDays)
 		return sub, true, err // true 表示是续期
 	}
 
@@ -400,6 +335,14 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 		if getErr != nil {
 			return nil, false, getErr
 		}
+		if !sub.ExpiresAt.After(time.Now()) {
+			validityDays := normalizeAssignValidityDays(input.ValidityDays)
+			renewed, renewErr := s.extendExistingSubscriptionFromInput(ctx, sub, input, validityDays)
+			if renewErr != nil {
+				return nil, false, renewErr
+			}
+			return renewed, true, nil
+		}
 		if conflictReason, conflict := detectAssignSemanticConflict(sub, input); conflict {
 			return nil, false, ErrSubscriptionAssignConflict.WithMetadata(map[string]string{
 				"conflict_reason": conflictReason,
@@ -425,6 +368,77 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 	}
 
 	return sub, false, nil
+}
+
+func (s *SubscriptionService) extendExistingSubscriptionFromInput(ctx context.Context, existingSub *UserSubscription, input *AssignSubscriptionInput, validityDays int) (*UserSubscription, error) {
+	now := time.Now()
+	var newExpiresAt time.Time
+
+	if existingSub.ExpiresAt.After(now) {
+		newExpiresAt = existingSub.ExpiresAt.AddDate(0, 0, validityDays)
+	} else {
+		newExpiresAt = now.AddDate(0, 0, validityDays)
+	}
+
+	if newExpiresAt.After(MaxExpiresAt) {
+		newExpiresAt = MaxExpiresAt
+	}
+
+	runUpdates := func(runCtx context.Context) error {
+		if err := s.userSubRepo.ExtendExpiry(runCtx, existingSub.ID, newExpiresAt); err != nil {
+			return fmt.Errorf("extend subscription: %w", err)
+		}
+
+		if existingSub.Status != SubscriptionStatusActive {
+			if err := s.userSubRepo.UpdateStatus(runCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
+				return fmt.Errorf("update subscription status: %w", err)
+			}
+		}
+
+		if input.Notes != "" {
+			newNotes := existingSub.Notes
+			if newNotes != "" {
+				newNotes += "\n"
+			}
+			newNotes += input.Notes
+			if err := s.userSubRepo.UpdateNotes(runCtx, existingSub.ID, newNotes); err != nil {
+				return fmt.Errorf("update subscription notes: %w", err)
+			}
+		}
+
+		return nil
+	}
+
+	if s.entClient != nil {
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin transaction: %w", err)
+		}
+		txCtx := dbent.NewTxContext(ctx, tx)
+		if err := runUpdates(txCtx); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit transaction: %w", err)
+		}
+	} else {
+		if err := runUpdates(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	s.InvalidateSubCache(input.UserID, input.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := input.UserID, input.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+
+	return s.userSubRepo.GetByID(ctx, existingSub.ID)
 }
 
 func detectAssignSemanticConflict(existing *UserSubscription, input *AssignSubscriptionInput) (string, bool) {

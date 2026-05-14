@@ -47,6 +47,7 @@ var codexModelMap = map[string]string{
 	"gpt-5.1-codex-mini":         "gpt-5.3-codex",
 	"gpt-5.2-codex":              "gpt-5.2",
 	"codex-mini-latest":          "gpt-5.3-codex",
+	"codex-auto-review":          "gpt-5.3-codex",
 	"gpt-5-codex":                "gpt-5.3-codex",
 }
 
@@ -833,6 +834,13 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 }
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
+	if mapped, ok := normalizeKnownCodexModel(model); ok {
+		// Normalize internal/legacy Codex aliases for all account types so they
+		// never reach passthrough upstreams verbatim.
+		if strings.EqualFold(strings.TrimSpace(model), "codex-auto-review") {
+			return mapped
+		}
+	}
 	if account == nil || account.Type == AccountTypeOAuth {
 		return normalizeCodexModel(model)
 	}

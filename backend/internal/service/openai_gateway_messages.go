@@ -434,7 +434,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
+	finalResponse, usage, usageIncompleteReason, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -456,14 +456,15 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		ResponseID:    finalResponse.ID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:             requestID,
+		ResponseID:            finalResponse.ID,
+		Usage:                 usage,
+		Model:                 originalModel,
+		BillingModel:          billingModel,
+		UpstreamModel:         upstreamModel,
+		Stream:                false,
+		Duration:              time.Since(startTime),
+		UsageIncompleteReason: usageIncompleteReason,
 	}, nil
 }
 
@@ -485,11 +486,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	resp *http.Response,
 	logPrefix string,
 	requestID string,
-) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, error) {
+) (*apicompat.ResponsesResponse, OpenAIUsage, string, *apicompat.BufferedResponseAccumulator, error) {
 	acc := apicompat.NewBufferedResponseAccumulator()
 	var usage OpenAIUsage
 	if resp == nil || resp.Body == nil {
-		return nil, usage, acc, errors.New("upstream response body is nil")
+		return nil, usage, "", acc, errors.New("upstream response body is nil")
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -564,7 +565,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 		select {
 		case ev, ok := <-events:
 			if !ok {
-				return nil, usage, acc, nil
+				return nil, usage, "", acc, nil
 			}
 			resetTimeout()
 			if ev.err != nil {
@@ -574,11 +575,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						zap.String("request_id", requestID),
 					)
 				}
-				return nil, usage, acc, ev.err
+				return nil, usage, "", acc, ev.err
 			}
 
 			if isOpenAICompatDoneSentinelLine(ev.line) {
-				return nil, usage, acc, nil
+				return nil, usage, "", acc, nil
 			}
 			payload, ok := extractOpenAISSEDataLine(ev.line)
 			if !ok || payload == "" {
@@ -599,8 +600,16 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
 				if event.Response.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+				} else {
+					logger.L().Warn(logPrefix+": terminal event missing usage",
+						zap.String("request_id", requestID),
+						zap.String("event_type", event.Type),
+						zap.String("response_id", event.Response.ID),
+						zap.String("response_status", event.Response.Status),
+					)
+					return event.Response, usage, "terminal event missing usage", acc, nil
 				}
-				return event.Response, usage, acc, nil
+				return event.Response, usage, "", acc, nil
 			}
 
 		case <-timeoutCh:
@@ -609,7 +618,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				zap.String("request_id", requestID),
 				zap.Duration("interval", streamInterval),
 			)
-			return nil, usage, acc, fmt.Errorf("stream data interval timeout")
+			return nil, usage, "", acc, fmt.Errorf("stream data interval timeout")
 		}
 	}
 }
@@ -645,6 +654,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	usageIncompleteReason := ""
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -670,15 +680,16 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:     requestID,
-			ResponseID:    responseID,
-			Usage:         usage,
-			Model:         originalModel,
-			BillingModel:  billingModel,
-			UpstreamModel: upstreamModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
+			RequestID:             requestID,
+			ResponseID:            responseID,
+			Usage:                 usage,
+			Model:                 originalModel,
+			BillingModel:          billingModel,
+			UpstreamModel:         upstreamModel,
+			Stream:                true,
+			Duration:              time.Since(startTime),
+			FirstTokenMs:          firstTokenMs,
+			UsageIncompleteReason: usageIncompleteReason,
 		}
 	}
 
@@ -707,6 +718,14 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 			if event.Response.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+			} else {
+				usageIncompleteReason = "terminal event missing usage"
+				logger.L().Warn("openai messages stream: terminal event missing usage",
+					zap.String("request_id", requestID),
+					zap.String("event_type", event.Type),
+					zap.String("response_id", event.Response.ID),
+					zap.String("response_status", event.Response.Status),
+				)
 			}
 		}
 

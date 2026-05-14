@@ -199,8 +199,35 @@ func (s *subscriptionUserSubRepoStub) GetByID(_ context.Context, id int64) (*Use
 	return &cp, nil
 }
 
+func (s *subscriptionUserSubRepoStub) ExtendExpiry(_ context.Context, subscriptionID int64, newExpiresAt time.Time) error {
+	sub := s.byID[subscriptionID]
+	if sub == nil {
+		return ErrSubscriptionNotFound
+	}
+	sub.ExpiresAt = newExpiresAt
+	return nil
+}
+
+func (s *subscriptionUserSubRepoStub) UpdateStatus(_ context.Context, subscriptionID int64, status string) error {
+	sub := s.byID[subscriptionID]
+	if sub == nil {
+		return ErrSubscriptionNotFound
+	}
+	sub.Status = status
+	return nil
+}
+
+func (s *subscriptionUserSubRepoStub) UpdateNotes(_ context.Context, subscriptionID int64, notes string) error {
+	sub := s.byID[subscriptionID]
+	if sub == nil {
+		return ErrSubscriptionNotFound
+	}
+	sub.Notes = notes
+	return nil
+}
+
 func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := time.Now().UTC().Add(-24 * time.Hour)
 	groupRepo := &subscriptionGroupRepoStub{
 		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
 	}
@@ -227,7 +254,7 @@ func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {
 }
 
 func TestAssignSubscriptionConflictWhenSemanticsMismatch(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := time.Now().UTC().Add(-24 * time.Hour)
 	groupRepo := &subscriptionGroupRepoStub{
 		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
 	}
@@ -253,8 +280,43 @@ func TestAssignSubscriptionConflictWhenSemanticsMismatch(t *testing.T) {
 	require.Equal(t, 0, subRepo.createCalls, "conflict should not create or mutate existing subscription")
 }
 
+func TestAssignSubscriptionRenewsExpiredExistingSubscription(t *testing.T) {
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	subRepo := newSubscriptionUserSubRepoStub()
+	expiredAt := time.Now().Add(-48 * time.Hour).UTC()
+	subRepo.seed(&UserSubscription{
+		ID:        12,
+		UserID:    3001,
+		GroupID:   1,
+		StartsAt:  expiredAt.AddDate(0, 0, -30),
+		ExpiresAt: expiredAt,
+		Status:    SubscriptionStatusExpired,
+		Notes:     "old-note",
+	})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	before := time.Now()
+	sub, err := svc.AssignSubscription(context.Background(), &AssignSubscriptionInput{
+		UserID:       3001,
+		GroupID:      1,
+		ValidityDays: 30,
+		Notes:        "new-note",
+	})
+	after := time.Now()
+
+	require.NoError(t, err)
+	require.Equal(t, int64(12), sub.ID)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.Equal(t, 0, subRepo.createCalls, "renewing expired subscription should not create a new row")
+	require.True(t, sub.ExpiresAt.After(before.AddDate(0, 0, 29)), "renewed expiry should move forward from now")
+	require.True(t, sub.ExpiresAt.Before(after.AddDate(0, 0, 31)), "renewed expiry should be based on current time")
+	require.Equal(t, "old-note\nnew-note", sub.Notes)
+}
+
 func TestBulkAssignSubscriptionCreatedReusedAndConflict(t *testing.T) {
-	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := time.Now().UTC().Add(-24 * time.Hour)
 	groupRepo := &subscriptionGroupRepoStub{
 		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
 	}

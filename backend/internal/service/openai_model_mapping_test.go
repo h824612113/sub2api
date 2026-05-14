@@ -273,6 +273,12 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 			model:   "gpt-4.1",
 			want:    "gpt-4.1",
 		},
+		{
+			name:    "apikey normalizes legacy codex auto review alias",
+			account: &Account{Type: AccountTypeAPIKey},
+			model:   "codex-auto-review",
+			want:    "gpt-5.3-codex",
+		},
 	}
 
 	for _, tt := range tests {
