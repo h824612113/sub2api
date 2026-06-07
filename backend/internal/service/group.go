@@ -9,6 +9,11 @@ import (
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 
+const (
+	quotaPoolKeyPrefix        = "quota_pool="
+	quotaPoolKeyLegacyPrefix  = "sub2api.quota_pool="
+)
+
 type Group struct {
 	ID             int64
 	Name           string
@@ -93,6 +98,26 @@ func (g *Group) HasWeeklyLimit() bool {
 
 func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
+}
+
+// QuotaPoolKey returns the optional shared quota pool key encoded in description.
+// Supported markers:
+// - quota_pool=<key>
+// - sub2api.quota_pool=<key>
+func (g *Group) QuotaPoolKey() string {
+	if g == nil {
+		return ""
+	}
+	for _, line := range strings.Split(g.Description, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, quotaPoolKeyLegacyPrefix):
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, quotaPoolKeyLegacyPrefix))
+		case strings.HasPrefix(trimmed, quotaPoolKeyPrefix):
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, quotaPoolKeyPrefix))
+		}
+	}
+	return ""
 }
 
 // GetImagePrice 根据 image_size 返回对应的图片生成价格

@@ -95,7 +95,11 @@
                   </div>
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
                     {{
-                      formatUsage(subscription.daily_usage_usd, subscription.group?.daily_limit_usd)
+                      formatUsage(
+                        subscription.daily_usage_usd,
+                        subscription.group?.daily_limit_usd,
+                        subscription.group?.rate_multiplier
+                      )
                     }}
                   </span>
                 </div>
@@ -123,7 +127,11 @@
                   </div>
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
                     {{
-                      formatUsage(subscription.weekly_usage_usd, subscription.group?.weekly_limit_usd)
+                      formatUsage(
+                        subscription.weekly_usage_usd,
+                        subscription.group?.weekly_limit_usd,
+                        subscription.group?.rate_multiplier
+                      )
                     }}
                   </span>
                 </div>
@@ -153,7 +161,8 @@
                     {{
                       formatUsage(
                         subscription.monthly_usage_usd,
-                        subscription.group?.monthly_limit_usd
+                        subscription.group?.monthly_limit_usd,
+                        subscription.group?.rate_multiplier
                       )
                     }}
                   </span>
@@ -183,6 +192,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { useSubscriptionStore } from '@/stores'
 import type { UserSubscription } from '@/types'
+import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 
 const { t } = useI18n()
 
@@ -251,9 +261,13 @@ function getProgressWidth(used: number | undefined, limit: number | null | undef
   return `${percentage}%`
 }
 
-function formatUsage(used: number | undefined, limit: number | null | undefined): string {
-  const usedValue = (used || 0).toFixed(2)
-  const limitValue = limit?.toFixed(2) || '∞'
+function formatUsage(
+  used: number | undefined,
+  limit: number | null | undefined,
+  rateMultiplier?: number | null,
+): string {
+  const usedValue = formatBillingDisplayUSD(used || 0, rateMultiplier)
+  const limitValue = limit != null ? formatBillingDisplayUSD(limit, rateMultiplier) : '∞'
   return `$${usedValue}/$${limitValue}`
 }
 

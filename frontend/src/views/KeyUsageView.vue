@@ -367,6 +367,7 @@ import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { DEFAULT_SITE_LOGO } from '@/constants/branding'
+import { formatBillingDisplayUSD, scaleBillingDisplayValue } from '@/utils/billingDisplay'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -558,6 +559,7 @@ const ringItems = computed<RingItem[]>(() => {
   } else {
     if (data.subscription) {
       const sub = data.subscription
+      const rateMultiplier = getSubscriptionRateMultiplier(data)
       const limits = [
         { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
         { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
@@ -566,7 +568,12 @@ const ringItems = computed<RingItem[]>(() => {
       for (const l of limits) {
         if (l.limit != null && l.limit > 0) {
           const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
-          items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
+          items.push({
+            title: l.label,
+            pct,
+            amount: `${subscriptionUsd(l.usage, rateMultiplier)} / ${subscriptionUsd(l.limit, rateMultiplier)}`,
+            iconType: 'calendar',
+          })
         }
       }
     }
@@ -656,25 +663,32 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
+      const rateMultiplier = getSubscriptionRateMultiplier(data)
       if (sub.daily_limit_usd > 0) {
         const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`,
+          value: `${subscriptionUsd(sub.daily_usage_usd, rateMultiplier)} / ${subscriptionUsd(sub.daily_limit_usd, rateMultiplier)}`,
+          valueClass: getUsageColor(pct),
         })
       }
       if (sub.weekly_limit_usd > 0) {
         const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
         rows.push({
           iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`,
+          value: `${subscriptionUsd(sub.weekly_usage_usd, rateMultiplier)} / ${subscriptionUsd(sub.weekly_limit_usd, rateMultiplier)}`,
+          valueClass: getUsageColor(pct),
         })
       }
       if (sub.monthly_limit_usd > 0) {
         const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
         rows.push({
           iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`,
+          value: `${subscriptionUsd(sub.monthly_usage_usd, rateMultiplier)} / ${subscriptionUsd(sub.monthly_limit_usd, rateMultiplier)}`,
+          valueClass: getUsageColor(pct),
         })
       }
       if (sub.expires_at) {
@@ -685,12 +699,15 @@ const detailRows = computed<DetailRow[]>(() => {
       }
     }
 
-    const remainColor = data.remaining != null
-      ? (data.remaining <= 0 ? 'text-rose-500' : data.remaining < 10 ? 'text-amber-500' : 'text-emerald-500')
+    const scaledRemaining = scaleBillingDisplayValue(data.remaining, getSubscriptionRateMultiplier(data))
+    const remainColor = scaledRemaining != null
+      ? (scaledRemaining <= 0 ? 'text-rose-500' : scaledRemaining < 10 ? 'text-amber-500' : 'text-emerald-500')
       : ''
     rows.push({
       iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_SHIELD,
-      label: t('keyUsage.remainingQuota'), value: data.remaining != null ? usd(data.remaining) : '-', valueClass: remainColor,
+      label: t('keyUsage.remainingQuota'),
+      value: data.remaining != null ? subscriptionUsd(data.remaining, getSubscriptionRateMultiplier(data)) : '-',
+      valueClass: remainColor,
     })
   }
 
@@ -737,6 +754,16 @@ const modelStats = computed<any[]>(() => resultData.value?.model_stats || [])
 function usd(value: number | null | undefined): string {
   if (value == null || value < 0) return '-'
   return '$' + Number(value).toFixed(2)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getSubscriptionRateMultiplier(data: any): number | null {
+  return data?.subscription?.rate_multiplier ?? data?.rate_multiplier ?? null
+}
+
+function subscriptionUsd(value: number | null | undefined, rateMultiplier?: number | null): string {
+  const formatted = formatBillingDisplayUSD(value, rateMultiplier)
+  return formatted === '-' ? formatted : '$' + formatted
 }
 
 function fmtNum(val: number | null | undefined): string {

@@ -40,7 +40,7 @@ func selectTopKOpenAICandidatesBySortBenchmark(candidates []openAIAccountCandida
 	}
 	ranked := append([]openAIAccountCandidateScore(nil), candidates...)
 	sort.Slice(ranked, func(i, j int) bool {
-		return isOpenAIAccountCandidateBetter(ranked[i], ranked[j])
+		return isOpenAIAccountCandidateBetter(ranked[i], ranked[j], nil)
 	})
 	if topK > len(ranked) {
 		topK = len(ranked)
@@ -64,7 +64,7 @@ func BenchmarkOpenAIAccountSchedulerSelectTopK(b *testing.B) {
 		b.Run(tc.name+"/heap_topk", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				result := selectTopKOpenAICandidates(candidates, tc.topK)
+				result := selectTopKOpenAICandidates(candidates, tc.topK, nil)
 				if len(result) == 0 {
 					b.Fatal("unexpected empty result")
 				}

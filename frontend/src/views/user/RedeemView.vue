@@ -19,6 +19,35 @@
         </div>
       </div>
 
+      <div class="card border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20">
+        <div class="p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-start gap-4">
+              <div
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30"
+              >
+                <Icon name="creditCard" size="md" class="text-primary-600 dark:text-primary-400" />
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-primary-800 dark:text-primary-300">
+                  补量包购买
+                </h3>
+                <p class="mt-1 text-sm text-primary-700 dark:text-primary-400">
+                  没有兑换码时，可先前往购买补量包或订阅套餐
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="btn btn-primary shrink-0"
+              @click="router.push('/purchase')"
+            >
+              去购买补量包
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Redeem Form -->
       <div class="card">
         <div class="p-6">
@@ -344,6 +373,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
@@ -353,6 +383,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
+const router = useRouter()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()

@@ -57,6 +57,7 @@ type APIKeyAuthUserSnapshot struct {
 type APIKeyAuthGroupSnapshot struct {
 	ID                              int64    `json:"id"`
 	Name                            string   `json:"name"`
+	Description                     string   `json:"description,omitempty"`
 	Platform                        string   `json:"platform"`
 	Status                          string   `json:"status"`
 	SubscriptionType                string   `json:"subscription_type"`

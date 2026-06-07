@@ -81,7 +81,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				return
 			}
 
-			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(c.Request.Context(), subscription, apiKey.Group)
 			if err != nil {
 				status := 403
 				if errors.Is(err, service.ErrDailyLimitExceeded) ||

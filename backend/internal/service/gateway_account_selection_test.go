@@ -40,7 +40,7 @@ func TestSortAccountsByPriorityAndLastUsed_ByPriority(t *testing.T) {
 		{ID: 2, Priority: 1, LastUsedAt: testTimePtr(now)},
 		{ID: 3, Priority: 3, LastUsedAt: testTimePtr(now)},
 	}
-	sortAccountsByPriorityAndLastUsed(accounts, false)
+	sortAccountsByPriorityAndLastUsed(accounts, nil, false)
 	require.Equal(t, int64(2), accounts[0].ID, "优先级最低的排第一")
 	require.Equal(t, int64(3), accounts[1].ID)
 	require.Equal(t, int64(1), accounts[2].ID)
@@ -53,7 +53,7 @@ func TestSortAccountsByPriorityAndLastUsed_SamePriorityByLastUsed(t *testing.T) 
 		{ID: 2, Priority: 1, LastUsedAt: testTimePtr(now.Add(-1 * time.Hour))},
 		{ID: 3, Priority: 1, LastUsedAt: nil},
 	}
-	sortAccountsByPriorityAndLastUsed(accounts, false)
+	sortAccountsByPriorityAndLastUsed(accounts, nil, false)
 	require.Equal(t, int64(3), accounts[0].ID, "nil LastUsedAt 排最前")
 	require.Equal(t, int64(2), accounts[1].ID, "更早使用的排前面")
 	require.Equal(t, int64(1), accounts[2].ID)
@@ -64,7 +64,7 @@ func TestSortAccountsByPriorityAndLastUsed_PreferOAuth(t *testing.T) {
 		{ID: 1, Priority: 1, LastUsedAt: nil, Type: AccountTypeAPIKey},
 		{ID: 2, Priority: 1, LastUsedAt: nil, Type: AccountTypeOAuth},
 	}
-	sortAccountsByPriorityAndLastUsed(accounts, true)
+	sortAccountsByPriorityAndLastUsed(accounts, nil, true)
 	require.Equal(t, int64(2), accounts[0].ID, "preferOAuth 时 OAuth 账号排前面")
 }
 
@@ -82,7 +82,7 @@ func TestSortAccountsByPriorityAndLastUsed_StableSort(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		cpy := make([]*Account, len(accounts))
 		copy(cpy, accounts)
-		sortAccountsByPriorityAndLastUsed(cpy, false)
+		sortAccountsByPriorityAndLastUsed(cpy, nil, false)
 		seenFirst[cpy[0].ID] = true
 
 		ids := map[int64]bool{}
@@ -102,7 +102,7 @@ func TestSortAccountsByPriorityAndLastUsed_MixedPriorityAndTime(t *testing.T) {
 		{ID: 3, Priority: 1, LastUsedAt: testTimePtr(now.Add(-1 * time.Hour))},
 		{ID: 4, Priority: 2, LastUsedAt: testTimePtr(now.Add(-2 * time.Hour))},
 	}
-	sortAccountsByPriorityAndLastUsed(accounts, false)
+	sortAccountsByPriorityAndLastUsed(accounts, nil, false)
 	// 优先级1排前：nil < earlier
 	require.Equal(t, int64(3), accounts[0].ID, "优先级1 + 更早")
 	require.Equal(t, int64(2), accounts[1].ID, "优先级1 + 现在")
@@ -111,10 +111,35 @@ func TestSortAccountsByPriorityAndLastUsed_MixedPriorityAndTime(t *testing.T) {
 	require.Equal(t, int64(4), accounts[3].ID, "优先级2 + 有时间")
 }
 
+func TestSortAccountsByPriorityAndLastUsed_UsesGroupPriorityOverride(t *testing.T) {
+	groupID := int64(100)
+	now := time.Now()
+	accounts := []*Account{
+		{
+			ID:         1,
+			Priority:   0,
+			LastUsedAt: testTimePtr(now),
+			AccountGroups: []AccountGroup{
+				{GroupID: groupID, Priority: 20},
+			},
+		},
+		{
+			ID:         2,
+			Priority:   50,
+			LastUsedAt: testTimePtr(now),
+			AccountGroups: []AccountGroup{
+				{GroupID: groupID, Priority: 1},
+			},
+		},
+	}
+	sortAccountsByPriorityAndLastUsed(accounts, &groupID, false)
+	require.Equal(t, int64(2), accounts[0].ID, "group priority should override account priority")
+}
+
 // --- filterByMinPriority ---
 
 func TestFilterByMinPriority_Empty(t *testing.T) {
-	result := filterByMinPriority(nil)
+	result := filterByMinPriority(nil, nil)
 	require.Nil(t, result)
 }
 
@@ -125,10 +150,39 @@ func TestFilterByMinPriority_SelectsMinPriority(t *testing.T) {
 		makeAccWithLoad(3, 1, 20, nil, AccountTypeAPIKey),
 		makeAccWithLoad(4, 2, 10, nil, AccountTypeAPIKey),
 	}
-	result := filterByMinPriority(accounts)
+	result := filterByMinPriority(accounts, nil)
 	require.Len(t, result, 2)
 	require.Equal(t, int64(2), result[0].account.ID)
 	require.Equal(t, int64(3), result[1].account.ID)
+}
+
+func TestFilterByMinPriority_UsesGroupPriorityOverride(t *testing.T) {
+	groupID := int64(101)
+	accounts := []accountWithLoad{
+		{
+			account: &Account{
+				ID:       1,
+				Priority: 0,
+				AccountGroups: []AccountGroup{
+					{GroupID: groupID, Priority: 10},
+				},
+			},
+			loadInfo: &AccountLoadInfo{AccountID: 1, LoadRate: 10},
+		},
+		{
+			account: &Account{
+				ID:       2,
+				Priority: 50,
+				AccountGroups: []AccountGroup{
+					{GroupID: groupID, Priority: 1},
+				},
+			},
+			loadInfo: &AccountLoadInfo{AccountID: 2, LoadRate: 10},
+		},
+	}
+	result := filterByMinPriority(accounts, &groupID)
+	require.Len(t, result, 1)
+	require.Equal(t, int64(2), result[0].account.ID)
 }
 
 // --- filterByMinLoadRate ---

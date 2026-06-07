@@ -39,21 +39,21 @@
 
       <!-- Group quota info (compact) -->
       <div class="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-dark-700/50">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
         </div>
         <div v-if="plan.daily_limit_usd != null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.dailyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatPlanLimit(plan.daily_limit_usd) }}</span>
         </div>
         <div v-if="plan.weekly_limit_usd != null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatPlanLimit(plan.weekly_limit_usd) }}</span>
         </div>
-        <div v-if="plan.monthly_limit_usd != null" class="flex items-center justify-between">
+        <div v-if="(plan.monthly_limit_usd ?? 0) > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatPlanLimit(plan.monthly_limit_usd) }}</span>
         </div>
         <div v-if="plan.daily_limit_usd == null && plan.weekly_limit_usd == null && plan.monthly_limit_usd == null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.quota') }}</span>
@@ -109,6 +109,7 @@ import {
   platformDiscountClass,
   platformLabel,
 } from '@/utils/platformColors'
+import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 
 const props = defineProps<{ plan: SubscriptionPlan; activeSubscriptions?: UserSubscription[] }>()
 const emit = defineEmits<{ select: [plan: SubscriptionPlan] }>()
@@ -135,8 +136,12 @@ const discountText = computed(() => {
   return pct > 0 ? `-${pct}%` : ''
 })
 
+function formatPlanLimit(value?: number | null): string {
+  return formatBillingDisplayUSD(value, props.plan.rate_multiplier)
+}
+
 const rateDisplay = computed(() => {
-  const rate = props.plan.rate_multiplier ?? 1
+  const rate = 1
   return `×${Number(rate.toPrecision(10))}`
 })
 

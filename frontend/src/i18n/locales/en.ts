@@ -371,7 +371,7 @@ export default {
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
-    buySubscription: 'Recharge / Subscription',
+    buySubscription: 'Purchase Plans',
     docs: 'Docs',
     myOrders: 'My Orders',
     orderManagement: 'Orders',
@@ -2793,6 +2793,7 @@ export default {
       dataImportHint: 'Upload the exported JSON file to import accounts and proxies.',
       dataImportWarning: 'Import will create new accounts/proxies; groups must be bound manually. Ensure existing data does not conflict.',
       dataImportFile: 'Data file',
+      dataImportGroupHint: 'Optional: choose the pool groups to bind imported accounts to. Leave empty to import accounts only.',
       dataImportButton: 'Start Import',
       dataImporting: 'Importing...',
       dataImportSelectFile: 'Please select a data file',
@@ -6170,8 +6171,8 @@ export default {
 
   // Recharge / Subscription Page
   purchase: {
-    title: 'Recharge / Subscription',
-    description: 'Recharge balance or purchase subscription via the embedded page',
+    title: 'Purchase Plans',
+    description: 'Browse and purchase subscription plans and top-up packs',
     openInNewTab: 'Open in new tab',
     notEnabledTitle: 'Feature not enabled',
     notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',

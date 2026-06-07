@@ -702,7 +702,7 @@ func TestSelectAccountWithLoadAwareness_StickyReadReuse(t *testing.T) {
 		LastUsedAt:  &now,
 	}
 
-	repo := stubOpenAIAccountRepo{accounts: []Account{account}}
+	repo := &stubOpenAIAccountRepo{accounts: []Account{account}}
 	concurrency := NewConcurrencyService(stubConcurrencyCache{})
 
 	cfg := &config.Config{

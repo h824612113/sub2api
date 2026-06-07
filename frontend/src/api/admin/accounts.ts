@@ -15,6 +15,7 @@ import type {
   AccountUsageStatsResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
+  AdminDataImportRequest,
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
@@ -538,12 +539,10 @@ export async function exportData(options?: {
   return data
 }
 
-export async function importData(payload: {
-  data: AdminDataPayload
-  skip_default_group_bind?: boolean
-}): Promise<AdminDataImportResult> {
+export async function importData(payload: AdminDataImportRequest): Promise<AdminDataImportResult> {
   const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
+    group_ids: payload.group_ids,
     skip_default_group_bind: payload.skip_default_group_bind
   })
   return data

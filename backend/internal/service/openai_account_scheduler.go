@@ -394,19 +394,22 @@ type openAIAccountCandidateScore struct {
 	hasTTFT   bool
 }
 
-type openAIAccountCandidateHeap []openAIAccountCandidateScore
+type openAIAccountCandidateHeap struct {
+	items   []openAIAccountCandidateScore
+	groupID *int64
+}
 
 func (h openAIAccountCandidateHeap) Len() int {
-	return len(h)
+	return len(h.items)
 }
 
 func (h openAIAccountCandidateHeap) Less(i, j int) bool {
 	// 最小堆根节点保存“最差”候选，便于 O(log k) 维护 topK。
-	return isOpenAIAccountCandidateBetter(h[j], h[i])
+	return isOpenAIAccountCandidateBetter(h.items[j], h.items[i], h.groupID)
 }
 
 func (h openAIAccountCandidateHeap) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
+	h.items[i], h.items[j] = h.items[j], h.items[i]
 }
 
 func (h *openAIAccountCandidateHeap) Push(x any) {
@@ -414,23 +417,25 @@ func (h *openAIAccountCandidateHeap) Push(x any) {
 	if !ok {
 		panic("openAIAccountCandidateHeap: invalid element type")
 	}
-	*h = append(*h, candidate)
+	h.items = append(h.items, candidate)
 }
 
 func (h *openAIAccountCandidateHeap) Pop() any {
-	old := *h
+	old := h.items
 	n := len(old)
 	last := old[n-1]
-	*h = old[:n-1]
+	h.items = old[:n-1]
 	return last
 }
 
-func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right openAIAccountCandidateScore) bool {
+func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right openAIAccountCandidateScore, groupID *int64) bool {
 	if left.score != right.score {
 		return left.score > right.score
 	}
-	if left.account.Priority != right.account.Priority {
-		return left.account.Priority < right.account.Priority
+	leftPriority := left.account.PriorityForGroup(groupID)
+	rightPriority := right.account.PriorityForGroup(groupID)
+	if leftPriority != rightPriority {
+		return leftPriority < rightPriority
 	}
 	if left.loadInfo.LoadRate != right.loadInfo.LoadRate {
 		return left.loadInfo.LoadRate < right.loadInfo.LoadRate
@@ -441,7 +446,7 @@ func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right open
 	return left.account.ID < right.account.ID
 }
 
-func selectTopKOpenAICandidates(candidates []openAIAccountCandidateScore, topK int) []openAIAccountCandidateScore {
+func selectTopKOpenAICandidates(candidates []openAIAccountCandidateScore, topK int, groupID *int64) []openAIAccountCandidateScore {
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -451,27 +456,30 @@ func selectTopKOpenAICandidates(candidates []openAIAccountCandidateScore, topK i
 	if topK >= len(candidates) {
 		ranked := append([]openAIAccountCandidateScore(nil), candidates...)
 		sort.Slice(ranked, func(i, j int) bool {
-			return isOpenAIAccountCandidateBetter(ranked[i], ranked[j])
+			return isOpenAIAccountCandidateBetter(ranked[i], ranked[j], groupID)
 		})
 		return ranked
 	}
 
-	best := make(openAIAccountCandidateHeap, 0, topK)
+	best := &openAIAccountCandidateHeap{
+		items:   make([]openAIAccountCandidateScore, 0, topK),
+		groupID: groupID,
+	}
 	for _, candidate := range candidates {
-		if len(best) < topK {
-			heap.Push(&best, candidate)
+		if best.Len() < topK {
+			heap.Push(best, candidate)
 			continue
 		}
-		if isOpenAIAccountCandidateBetter(candidate, best[0]) {
-			best[0] = candidate
-			heap.Fix(&best, 0)
+		if isOpenAIAccountCandidateBetter(candidate, best.items[0], groupID) {
+			best.items[0] = candidate
+			heap.Fix(best, 0)
 		}
 	}
 
-	ranked := make([]openAIAccountCandidateScore, len(best))
-	copy(ranked, best)
+	ranked := make([]openAIAccountCandidateScore, len(best.items))
+	copy(ranked, best.items)
 	sort.Slice(ranked, func(i, j int) bool {
-		return isOpenAIAccountCandidateBetter(ranked[i], ranked[j])
+		return isOpenAIAccountCandidateBetter(ranked[i], ranked[j], groupID)
 	})
 	return ranked
 }
@@ -586,6 +594,42 @@ func buildOpenAIWeightedSelectionOrder(
 	return order
 }
 
+func partitionOpenAICandidatesByPlus(
+	candidates []openAIAccountCandidateScore,
+) ([]openAIAccountCandidateScore, []openAIAccountCandidateScore) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	plus := make([]openAIAccountCandidateScore, 0, len(candidates))
+	others := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account != nil && candidate.account.IsOpenAIPlus() {
+			plus = append(plus, candidate)
+			continue
+		}
+		others = append(others, candidate)
+	}
+	return plus, others
+}
+
+func partitionOpenAICandidatesByFree(
+	candidates []openAIAccountCandidateScore,
+) ([]openAIAccountCandidateScore, []openAIAccountCandidateScore) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	free := make([]openAIAccountCandidateScore, 0, len(candidates))
+	others := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account != nil && candidate.account.IsOpenAIFree() {
+			free = append(free, candidate)
+			continue
+		}
+		others = append(others, candidate)
+	}
+	return free, others
+}
+
 func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -682,18 +726,20 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	candidateCount := len(candidates)
 	loadSkew := 0.0
 	if len(candidates) > 0 {
-		minPriority, maxPriority := candidates[0].account.Priority, candidates[0].account.Priority
+		minPriority := candidates[0].account.PriorityForGroup(req.GroupID)
+		maxPriority := minPriority
 		maxWaiting := 1
 		loadRateSum := 0.0
 		loadRateSumSquares := 0.0
 		minTTFT, maxTTFT := 0.0, 0.0
 		hasTTFTSample := false
 		for _, candidate := range candidates {
-			if candidate.account.Priority < minPriority {
-				minPriority = candidate.account.Priority
+			candidatePriority := candidate.account.PriorityForGroup(req.GroupID)
+			if candidatePriority < minPriority {
+				minPriority = candidatePriority
 			}
-			if candidate.account.Priority > maxPriority {
-				maxPriority = candidate.account.Priority
+			if candidatePriority > maxPriority {
+				maxPriority = candidatePriority
 			}
 			if candidate.loadInfo.WaitingCount > maxWaiting {
 				maxWaiting = candidate.loadInfo.WaitingCount
@@ -721,8 +767,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		for i := range candidates {
 			item := &candidates[i]
 			priorityFactor := 1.0
+			itemPriority := item.account.PriorityForGroup(req.GroupID)
 			if maxPriority > minPriority {
-				priorityFactor = 1 - float64(item.account.Priority-minPriority)/float64(maxPriority-minPriority)
+				priorityFactor = 1 - float64(itemPriority-minPriority)/float64(maxPriority-minPriority)
 			}
 			loadFactor := 1 - clamp01(float64(item.loadInfo.LoadRate)/100.0)
 			queueFactor := 1 - clamp01(float64(item.loadInfo.WaitingCount)/float64(maxWaiting))
@@ -759,8 +806,28 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if groupTopK > len(pool) {
 			groupTopK = len(pool)
 		}
-		ranked := selectTopKOpenAICandidates(pool, groupTopK)
+		ranked := selectTopKOpenAICandidates(pool, groupTopK, req.GroupID)
 		return buildOpenAIWeightedSelectionOrder(ranked, req)
+	}
+	buildPlusPreferredSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if len(pool) == 0 {
+			return nil
+		}
+		plus, others := partitionOpenAICandidatesByPlus(pool)
+		if len(plus) > 0 {
+			return buildSelectionOrder(plus)
+		}
+		return buildSelectionOrder(others)
+	}
+	buildFreePreferredSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if len(pool) == 0 {
+			return nil
+		}
+		free, others := partitionOpenAICandidatesByFree(pool)
+		if len(free) > 0 {
+			return buildSelectionOrder(free)
+		}
+		return buildPlusPreferredSelectionOrder(others)
 	}
 	sortCompactRetryCandidates := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
 		if len(pool) == 0 {
@@ -769,8 +836,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		ordered := append([]openAIAccountCandidateScore(nil), pool...)
 		sort.SliceStable(ordered, func(i, j int) bool {
 			a, b := ordered[i], ordered[j]
-			if a.account.Priority != b.account.Priority {
-				return a.account.Priority < b.account.Priority
+			aPriority := a.account.PriorityForGroup(req.GroupID)
+			bPriority := b.account.PriorityForGroup(req.GroupID)
+			if aPriority != bPriority {
+				return aPriority < bPriority
 			}
 			if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 				return a.loadInfo.LoadRate < b.loadInfo.LoadRate
@@ -807,13 +876,19 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if len(supported) == 0 && len(unknown) == 0 && s.service.schedulerSnapshot == nil {
 			return nil, candidateCount, topK, loadSkew, ErrNoAvailableCompactAccounts
 		}
-		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
-		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
+		selectionOrder = append(selectionOrder, buildPlusPreferredSelectionOrder(supported)...)
+		selectionOrder = append(selectionOrder, buildPlusPreferredSelectionOrder(unknown)...)
 		if len(staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
-			selectionOrder = append(selectionOrder, sortCompactRetryCandidates(staleSnapshotCompactRetry)...)
+			plusRetry, otherRetry := partitionOpenAICandidatesByPlus(staleSnapshotCompactRetry)
+			selectionOrder = append(selectionOrder, sortCompactRetryCandidates(plusRetry)...)
+			selectionOrder = append(selectionOrder, sortCompactRetryCandidates(otherRetry)...)
 		}
 	} else {
-		selectionOrder = buildSelectionOrder(candidates)
+		if req.RequiredImageCapability == "" {
+			selectionOrder = buildFreePreferredSelectionOrder(candidates)
+		} else {
+			selectionOrder = buildPlusPreferredSelectionOrder(candidates)
+		}
 	}
 	if len(selectionOrder) == 0 {
 		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, req.RequireCompact && len(allCandidates) > 0)
@@ -1064,7 +1139,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 			for {
-				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact)
+				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredImageCapability == "")
 				if err != nil {
 					return nil, decision, err
 				}
@@ -1089,7 +1164,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 
 		effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 		for {
-			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact)
+			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, false)
 			if err != nil {
 				return nil, decision, err
 			}

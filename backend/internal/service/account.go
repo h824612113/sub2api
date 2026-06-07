@@ -141,6 +141,30 @@ func (a *Account) IsOverloaded() bool {
 	return time.Now().Before(*a.OverloadUntil)
 }
 
+func (a *Account) GroupPriority(groupID int64) (int, bool) {
+	if a == nil || groupID <= 0 {
+		return 0, false
+	}
+	for _, ag := range a.AccountGroups {
+		if ag.GroupID == groupID {
+			return ag.Priority, true
+		}
+	}
+	return 0, false
+}
+
+func (a *Account) PriorityForGroup(groupID *int64) int {
+	if a == nil {
+		return 0
+	}
+	if groupID != nil {
+		if priority, ok := a.GroupPriority(*groupID); ok {
+			return priority
+		}
+	}
+	return a.Priority
+}
+
 func (a *Account) IsOAuth() bool {
 	return a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken
 }
@@ -975,6 +999,21 @@ func (a *Account) IsOpenAIOAuth() bool {
 
 func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
+}
+
+func (a *Account) OpenAIPlanType() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(a.GetCredential("plan_type")))
+}
+
+func (a *Account) IsOpenAIFree() bool {
+	return a.OpenAIPlanType() == "free"
+}
+
+func (a *Account) IsOpenAIPlus() bool {
+	return a.OpenAIPlanType() == "plus"
 }
 
 func (a *Account) GetOpenAIBaseURL() string {

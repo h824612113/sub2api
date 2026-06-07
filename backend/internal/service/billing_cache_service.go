@@ -806,6 +806,10 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 
 // checkSubscriptionEligibility 检查订阅模式资格
 func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
+	if group == nil || subscription == nil {
+		return ErrSubscriptionInvalid
+	}
+
 	// 获取订阅缓存数据
 	subData, err := s.GetSubscriptionStatus(ctx, userID, group.ID)
 	if err != nil {
@@ -829,16 +833,25 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		return ErrSubscriptionInvalid
 	}
 
-	// 检查限额（使用传入的Group限额配置）
+	// 日限额仍按当前分组独立计算。
 	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
 		return ErrDailyLimitExceeded
 	}
 
-	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+	pooledQuota, err := aggregatePooledSubscriptionQuota(ctx, s.subRepo, subscription, group)
+	if err != nil {
+		if s.circuitBreaker != nil {
+			s.circuitBreaker.OnFailure(err)
+		}
+		logger.LegacyPrintf("service.billing_cache", "ALERT: pooled subscription check failed for user %d group %d: %v", userID, group.ID, err)
+		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+
+	if pooledQuota.HasWeeklyPool && pooledQuota.WeeklyLimit > 0 && pooledQuota.WeeklyUsage >= pooledQuota.WeeklyLimit {
 		return ErrWeeklyLimitExceeded
 	}
 
-	if group.HasMonthlyLimit() && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+	if pooledQuota.HasMonthlyPool && pooledQuota.MonthlyLimit > 0 && pooledQuota.MonthlyUsage >= pooledQuota.MonthlyLimit {
 		return ErrMonthlyLimitExceeded
 	}
 

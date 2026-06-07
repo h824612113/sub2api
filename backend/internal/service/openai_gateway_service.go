@@ -1333,6 +1333,44 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 	return out
 }
 
+func prioritizeOpenAIFreeAccounts(accounts []*Account) []*Account {
+	if len(accounts) == 0 {
+		return nil
+	}
+	free := make([]*Account, 0, len(accounts))
+	others := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil && account.IsOpenAIFree() {
+			free = append(free, account)
+			continue
+		}
+		others = append(others, account)
+	}
+	out := make([]*Account, 0, len(accounts))
+	out = append(out, free...)
+	out = append(out, others...)
+	return out
+}
+
+func prioritizeOpenAIFreeAccountsWithLoad(accounts []accountWithLoad) []accountWithLoad {
+	if len(accounts) == 0 {
+		return nil
+	}
+	free := make([]accountWithLoad, 0, len(accounts))
+	others := make([]accountWithLoad, 0, len(accounts))
+	for _, account := range accounts {
+		if account.account != nil && account.account.IsOpenAIFree() {
+			free = append(free, account)
+			continue
+		}
+		others = append(others, account)
+	}
+	out := make([]accountWithLoad, 0, len(accounts))
+	out = append(out, free...)
+	out = append(out, others...)
+	return out
+}
+
 // resolveOpenAIAccountUpstreamModelForRequest resolves the upstream model that
 // would be sent for a given request, honouring compact-only mappings when the
 // caller is on the /responses/compact path.
@@ -1450,8 +1488,13 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // least one candidate was filtered out solely because it lacks compact support
 // (only meaningful when requireCompact=true).
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) (*Account, bool) {
-	var selected *Account
-	selectedCompactTier := -1
+	preferFree := true
+	var freeSelected *Account
+	freeSelectedCompactTier := -1
+	var plusSelected *Account
+	plusSelectedCompactTier := -1
+	var fallbackSelected *Account
+	fallbackSelectedCompactTier := -1
 	compactBlocked := false
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 
@@ -1484,30 +1527,46 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			}
 		}
 
+		targetSelected := &fallbackSelected
+		targetCompactTier := &fallbackSelectedCompactTier
+		if preferFree && fresh.IsOpenAIFree() {
+			targetSelected = &freeSelected
+			targetCompactTier = &freeSelectedCompactTier
+		} else if fresh.IsOpenAIPlus() {
+			targetSelected = &plusSelected
+			targetCompactTier = &plusSelectedCompactTier
+		}
+
 		// 选择优先级最高且最久未使用的账号
 		// Select highest priority and least recently used
-		if selected == nil {
-			selected = fresh
-			selectedCompactTier = compactTier
+		if *targetSelected == nil {
+			*targetSelected = fresh
+			*targetCompactTier = compactTier
 			continue
 		}
 
 		// compact 模式下高 tier 优先；同 tier 内才比较 priority/LRU。
-		if requireCompact && compactTier != selectedCompactTier {
-			if compactTier > selectedCompactTier {
-				selected = fresh
-				selectedCompactTier = compactTier
+		if requireCompact && compactTier != *targetCompactTier {
+			if compactTier > *targetCompactTier {
+				*targetSelected = fresh
+				*targetCompactTier = compactTier
 			}
 			continue
 		}
 
-		if s.isBetterAccount(fresh, selected) {
-			selected = fresh
-			selectedCompactTier = compactTier
+		if s.isBetterAccount(fresh, *targetSelected, groupID) {
+			*targetSelected = fresh
+			*targetCompactTier = compactTier
 		}
 	}
 
-	return selected, compactBlocked
+	if preferFree && freeSelected != nil {
+		return freeSelected, compactBlocked
+	}
+	if plusSelected != nil {
+		return plusSelected, compactBlocked
+	}
+	return fallbackSelected, compactBlocked
 }
 
 // isBetterAccount 判断 candidate 是否比 current 更优。
@@ -1515,13 +1574,15 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 //
 // isBetterAccount checks if candidate is better than current.
 // Rules: higher priority (lower value) wins; same priority: never used > least recently used.
-func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool {
+func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account, groupID *int64) bool {
 	// 优先级更高（数值更小）
 	// Higher priority (lower value)
-	if candidate.Priority < current.Priority {
+	candidatePriority := candidate.PriorityForGroup(groupID)
+	currentPriority := current.PriorityForGroup(groupID)
+	if candidatePriority < currentPriority {
 		return true
 	}
-	if candidate.Priority > current.Priority {
+	if candidatePriority > currentPriority {
 		return false
 	}
 
@@ -1545,10 +1606,10 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
-	return s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs, false)
+	return s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs, false, true)
 }
 
-func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) (*AccountSelectionResult, error) {
+func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, preferFree bool) (*AccountSelectionResult, error) {
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
@@ -1685,7 +1746,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
-		sortAccountsByPriorityAndLastUsed(ordered, false)
+		sortAccountsByPriorityAndLastUsed(ordered, groupID, false)
+		if preferFree {
+			ordered = prioritizeOpenAIFreeAccounts(ordered)
+		}
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
@@ -1727,8 +1791,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if len(available) > 0 {
 			sort.SliceStable(available, func(i, j int) bool {
 				a, b := available[i], available[j]
-				if a.account.Priority != b.account.Priority {
-					return a.account.Priority < b.account.Priority
+				aPriority := a.account.PriorityForGroup(groupID)
+				bPriority := b.account.PriorityForGroup(groupID)
+				if aPriority != bPriority {
+					return aPriority < bPriority
 				}
 				if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
 					return a.loadInfo.LoadRate < b.loadInfo.LoadRate
@@ -1744,7 +1810,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 				}
 			})
-			shuffleWithinSortGroups(available)
+			shuffleWithinSortGroups(available, groupID)
 
 			selectionOrder := make([]accountWithLoad, 0, len(available))
 			if requireCompact {
@@ -1763,6 +1829,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				selectionOrder = appendTier(selectionOrder, 0)
 			} else {
 				selectionOrder = append(selectionOrder, available...)
+				if preferFree {
+					selectionOrder = prioritizeOpenAIFreeAccountsWithLoad(selectionOrder)
+				}
 			}
 
 			for _, item := range selectionOrder {
@@ -1789,7 +1858,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 3: Fallback wait ============
-	sortAccountsByPriorityAndLastUsed(candidates, false)
+	sortAccountsByPriorityAndLastUsed(candidates, groupID, false)
+	if preferFree {
+		candidates = prioritizeOpenAIFreeAccounts(candidates)
+	}
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
@@ -3122,7 +3194,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, s.handleLocalOpenAIUpstreamConfigError(ctx, account, err)
 			}
 			targetURL = buildOpenAIResponsesURL(validatedURL)
 		}
@@ -3831,7 +3903,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		} else {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, s.handleLocalOpenAIUpstreamConfigError(ctx, account, err)
 			}
 			targetURL = buildOpenAIResponsesURL(validatedURL)
 		}
@@ -4955,6 +5027,27 @@ func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, erro
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
+}
+
+func (s *OpenAIGatewayService) handleLocalOpenAIUpstreamConfigError(ctx context.Context, account *Account, err error) error {
+	if err == nil {
+		return nil
+	}
+	if account == nil || account.ID <= 0 {
+		return err
+	}
+
+	msg := sanitizeUpstreamErrorMessage(err.Error())
+	if msg == "" {
+		msg = "invalid upstream account configuration"
+	}
+	logger.LegacyPrintf("service.openai_gateway", "[OpenAI] local upstream config invalid, unscheduling account=%d name=%s err=%s", account.ID, account.Name, msg)
+	if s.accountRepo != nil {
+		_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+		_ = s.accountRepo.SetError(ctx, account.ID, msg)
+	}
+
+	return &UpstreamFailoverError{StatusCode: http.StatusBadGateway}
 }
 
 // buildOpenAIResponsesURL 组装 OpenAI Responses 端点。

@@ -28,8 +28,11 @@ type RateLimitService struct {
 	openAI403CounterCache OpenAI403CounterCache
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
+	alertEmailSender      rateLimitAlertEmailSender
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
+	alertStateMu          sync.Mutex
+	alertState            map[int64]time.Time
 }
 
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
@@ -66,6 +69,16 @@ const (
 	openAI403CounterWindowMinutes   = 180
 )
 
+const (
+	poolModeInvalidAuthTempUnschedDuration = 24 * time.Hour
+	poolModeInvalidAuthAlertCopies         = 3
+	poolModeInvalidAuthAlertWindow         = 24 * time.Hour
+)
+
+type rateLimitAlertEmailSender interface {
+	SendEmail(ctx context.Context, to, subject, body string) error
+}
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
@@ -75,6 +88,7 @@ func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogReposi
 		geminiQuotaService: geminiQuotaService,
 		tempUnschedCache:   tempUnschedCache,
 		usageCache:         make(map[int64]*geminiUsageCacheEntry),
+		alertState:         make(map[int64]time.Time),
 	}
 }
 
@@ -96,6 +110,11 @@ func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
 func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvalidator) {
 	s.tokenCacheInvalidator = invalidator
+}
+
+// SetAlertEmailSender sets the email sender used for operator alerts.
+func (s *RateLimitService) SetAlertEmailSender(sender rateLimitAlertEmailSender) {
+	s.alertEmailSender = sender
 }
 
 // ErrorPolicyResult 表示错误策略检查的结果
@@ -134,6 +153,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		s.handlePoolModeInvalidAuthFailure(ctx, account, statusCode, responseBody)
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 	}
@@ -293,6 +313,173 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	return shouldDisable
+}
+
+func (s *RateLimitService) handlePoolModeInvalidAuthFailure(ctx context.Context, account *Account, statusCode int, responseBody []byte) {
+	if account == nil || !account.IsPoolMode() || account.Type != AccountTypeAPIKey || account.Platform != PlatformOpenAI {
+		return
+	}
+	if statusCode != http.StatusUnauthorized || !isPoolModeInvalidAuthResponse(responseBody) {
+		return
+	}
+
+	now := time.Now()
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		return
+	}
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	msg := "Pool mode invalid authentication (401): invalid API key or revoked credential"
+	if upstreamMsg != "" {
+		msg = "Pool mode invalid authentication (401): " + truncateForLog([]byte(upstreamMsg), 512)
+	}
+
+	until := now.Add(poolModeInvalidAuthTempUnschedDuration)
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+		slog.Warn("pool_mode_invalid_auth_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+		return
+	}
+
+	account.TempUnschedulableUntil = &until
+	account.TempUnschedulableReason = msg
+	slog.Warn("pool_mode_invalid_auth_temp_unschedulable",
+		"account_id", account.ID,
+		"platform", account.Platform,
+		"until", until.Format(time.RFC3339),
+	)
+
+	s.sendPoolModeInvalidAuthAlerts(account, until, msg)
+}
+
+func isPoolModeInvalidAuthResponse(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+
+	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
+	switch code {
+	case "invalid_api_key", "token_invalidated", "token_revoked":
+		return true
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	for _, keyword := range []string{
+		"invalid api key",
+		"incorrect api key",
+		"invalid_api_key",
+		"token invalidated",
+		"token revoked",
+		"revoked credential",
+	} {
+		if strings.Contains(msg, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *RateLimitService) sendPoolModeInvalidAuthAlerts(account *Account, until time.Time, reason string) {
+	if s == nil || account == nil || s.alertEmailSender == nil {
+		return
+	}
+
+	recipients := s.loadPoolModeInvalidAuthAlertRecipients()
+	if len(recipients) == 0 {
+		return
+	}
+
+	now := time.Now()
+	s.alertStateMu.Lock()
+	lastSentAt, seen := s.alertState[account.ID]
+	if seen && now.Sub(lastSentAt) < poolModeInvalidAuthAlertWindow {
+		s.alertStateMu.Unlock()
+		return
+	}
+	s.alertState[account.ID] = now
+	s.alertStateMu.Unlock()
+
+	go func() {
+		sendCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+
+		for i := 1; i <= poolModeInvalidAuthAlertCopies; i++ {
+			subject := fmt.Sprintf("[Bad Account Alert %d/%d] OpenAI pool account %d temp disabled", i, poolModeInvalidAuthAlertCopies, account.ID)
+			body := buildPoolModeInvalidAuthAlertEmailBody(account, until, reason, i, poolModeInvalidAuthAlertCopies)
+			for _, recipient := range recipients {
+				if err := s.alertEmailSender.SendEmail(sendCtx, recipient, subject, body); err != nil {
+					slog.Warn("pool_mode_invalid_auth_alert_send_failed",
+						"account_id", account.ID,
+						"recipient", recipient,
+						"copy", i,
+						"error", err,
+					)
+				}
+			}
+		}
+	}()
+}
+
+func (s *RateLimitService) loadPoolModeInvalidAuthAlertRecipients() []string {
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return nil
+	}
+
+	raw, err := s.settingService.settingRepo.GetValue(context.Background(), SettingKeyOpsEmailNotificationConfig)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	var cfg OpsEmailNotificationConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return nil
+	}
+	normalizeOpsEmailNotificationConfig(&cfg)
+	if !cfg.Alert.Enabled || len(cfg.Alert.Recipients) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(cfg.Alert.Recipients))
+	recipients := make([]string, 0, len(cfg.Alert.Recipients))
+	for _, recipient := range cfg.Alert.Recipients {
+		addr := strings.TrimSpace(recipient)
+		if addr == "" {
+			continue
+		}
+		key := strings.ToLower(addr)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		recipients = append(recipients, addr)
+	}
+	return recipients
+}
+
+func buildPoolModeInvalidAuthAlertEmailBody(account *Account, until time.Time, reason string, copyIndex int, copyTotal int) string {
+	if account == nil {
+		return ""
+	}
+	return fmt.Sprintf(`
+<h2>Bad Account Alert (%d/%d)</h2>
+<p><b>Account ID</b>: %d</p>
+<p><b>Account Name</b>: %s</p>
+<p><b>Platform</b>: %s</p>
+<p><b>Type</b>: %s</p>
+<p><b>Action</b>: Temp unschedulable</p>
+<p><b>Until</b>: %s</p>
+<p><b>Reason</b>: %s</p>
+`,
+		copyIndex,
+		copyTotal,
+		account.ID,
+		htmlEscape(account.Name),
+		htmlEscape(account.Platform),
+		htmlEscape(account.Type),
+		until.Format(time.RFC3339),
+		htmlEscape(reason),
+	)
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.

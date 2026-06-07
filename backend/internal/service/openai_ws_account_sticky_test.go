@@ -28,7 +28,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Hit(t *testing.T
 	cfg := newOpenAIWSV2TestConfig()
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{account}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -68,7 +68,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_RateLimitedMiss(
 	store := NewOpenAIWSStateStore(cache)
 	cfg := newOpenAIWSV2TestConfig()
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{account}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -119,7 +119,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_DBRuntimeRecheck
 		accountsByID: map[int64]*Account{dbAccount.ID: staleAccount},
 	}
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{dbAccount}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{dbAccount}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -155,7 +155,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Excluded(t *test
 	store := NewOpenAIWSStateStore(cache)
 	cfg := newOpenAIWSV2TestConfig()
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{account}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -188,7 +188,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ForceHTTPIgnored
 	store := NewOpenAIWSStateStore(cache)
 	cfg := newOpenAIWSV2TestConfig()
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{account}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -249,7 +249,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_BusyKeepsSticky(
 	}
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: accounts},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: accounts},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(concurrencyCache),

@@ -815,7 +815,7 @@ func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSub
 // ValidateAndCheckLimits 合并验证+限额检查（中间件热路径专用）
 // 仅做内存检查，不触发 DB 写入。窗口重置的 DB 写入由 DoWindowMaintenance 异步完成。
 // 返回 needsMaintenance 表示是否需要异步执行窗口维护。
-func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, group *Group) (needsMaintenance bool, err error) {
+func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *UserSubscription, group *Group) (needsMaintenance bool, err error) {
 	// 1. 验证订阅状态
 	if sub.Status == SubscriptionStatusExpired {
 		return false, ErrSubscriptionExpired
@@ -849,10 +849,15 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 	if !sub.CheckDailyLimit(group, 0) {
 		return needsMaintenance, ErrDailyLimitExceeded
 	}
-	if !sub.CheckWeeklyLimit(group, 0) {
+
+	pooledQuota, err := aggregatePooledSubscriptionQuota(ctx, s.userSubRepo, sub, group)
+	if err != nil {
+		return needsMaintenance, err
+	}
+	if pooledQuota.HasWeeklyPool && pooledQuota.WeeklyLimit > 0 && pooledQuota.WeeklyUsage > pooledQuota.WeeklyLimit {
 		return needsMaintenance, ErrWeeklyLimitExceeded
 	}
-	if !sub.CheckMonthlyLimit(group, 0) {
+	if pooledQuota.HasMonthlyPool && pooledQuota.MonthlyLimit > 0 && pooledQuota.MonthlyUsage > pooledQuota.MonthlyLimit {
 		return needsMaintenance, ErrMonthlyLimitExceeded
 	}
 

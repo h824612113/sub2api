@@ -371,7 +371,7 @@ export default {
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
-    buySubscription: '充值/订阅',
+    buySubscription: '购买套餐',
     docs: '文档',
     myOrders: '我的订单',
     orderManagement: '订单管理',
@@ -2869,6 +2869,7 @@ export default {
       dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理。',
       dataImportWarning: '导入将创建新账号与代理，分组需手工绑定；请确认已有数据不会冲突。',
       dataImportFile: '数据文件',
+      dataImportGroupHint: '可选：选择要导入到的号池。留空则仅导入账号，不绑定号池。',
       dataImportButton: '开始导入',
       dataImporting: '导入中...',
       dataImportSelectFile: '请选择数据文件',
@@ -6330,8 +6331,8 @@ export default {
 
   // Recharge / Subscription Page
   purchase: {
-    title: '充值/订阅',
-    description: '通过内嵌页面完成充值/订阅',
+    title: '购买套餐',
+    description: '查看并购买订阅套餐与流量包',
     openInNewTab: '新窗口打开',
     notEnabledTitle: '该功能未开启',
     notEnabledDesc: '管理员暂未开启充值/订阅入口，请联系管理员。',

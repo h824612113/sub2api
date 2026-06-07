@@ -10,6 +10,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { resolveDocumentTitle } from './title'
+import PaymentView from '@/views/user/PaymentView.vue'
 
 /**
  * Route definitions with lazy loading
@@ -258,14 +259,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/purchase',
     name: 'PurchaseSubscription',
-    component: () => import('@/views/user/PaymentView.vue'),
+    component: PaymentView,
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
       title: 'Purchase Subscription',
       titleKey: 'nav.buySubscription',
-      descriptionKey: 'purchase.description',
-      requiresPayment: true
+      descriptionKey: 'purchase.description'
     }
   },
   {

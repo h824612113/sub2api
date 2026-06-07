@@ -28,6 +28,14 @@ var _ GatewayCache = (*stubGatewayCache)(nil)
 type stubOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
+	setSchedulableCalls []struct {
+		id          int64
+		schedulable bool
+	}
+	setErrorCalls []struct {
+		id  int64
+		msg string
+	}
 }
 
 type snapshotUpdateAccountRepo struct {
@@ -77,6 +85,22 @@ func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, pl
 
 func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+}
+
+func (r *stubOpenAIAccountRepo) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
+	r.setSchedulableCalls = append(r.setSchedulableCalls, struct {
+		id          int64
+		schedulable bool
+	}{id: id, schedulable: schedulable})
+	return nil
+}
+
+func (r *stubOpenAIAccountRepo) SetError(ctx context.Context, id int64, msg string) error {
+	r.setErrorCalls = append(r.setErrorCalls, struct {
+		id  int64
+		msg string
+	}{id: id, msg: msg})
+	return nil
 }
 
 type stubConcurrencyCache struct {
@@ -405,7 +429,7 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T)
 	}
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{rateLimited, available}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{rateLimited, available}},
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
 	}
 
@@ -450,7 +474,7 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulableWhenNoConcurre
 	}
 
 	svc := &OpenAIGatewayService{
-		accountRepo: stubOpenAIAccountRepo{accounts: []Account{rateLimited, available}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{rateLimited, available}},
 		// concurrencyService is nil, forcing the non-load-batch selection path.
 	}
 
@@ -471,7 +495,7 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulableWhenNoConcurre
 
 func TestOpenAISelectAccountForModelWithExclusions_StickyUnschedulableClearsSession(t *testing.T) {
 	sessionHash := "session-1"
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusDisabled, Schedulable: true, Concurrency: 1},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1},
@@ -504,7 +528,7 @@ func TestOpenAISelectAccountForModelWithExclusions_StickyUnschedulableClearsSess
 func TestOpenAISelectAccountWithLoadAwareness_StickyUnschedulableClearsSession(t *testing.T) {
 	sessionHash := "session-2"
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusDisabled, Schedulable: true, Concurrency: 1},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1},
@@ -539,7 +563,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyUnschedulableClearsSession(t
 }
 
 func TestOpenAISelectAccountForModelWithExclusions_NoModelSupport(t *testing.T) {
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{
 				ID:          1,
@@ -571,7 +595,7 @@ func TestOpenAISelectAccountForModelWithExclusions_NoModelSupport(t *testing.T) 
 
 func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorFallback(t *testing.T) {
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 2},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
@@ -608,7 +632,7 @@ func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorFallback(t *testing.
 
 func TestOpenAISelectAccountWithLoadAwareness_NoSlotFallbackWait(t *testing.T) {
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 		},
@@ -641,7 +665,7 @@ func TestOpenAISelectAccountWithLoadAwareness_NoSlotFallbackWait(t *testing.T) {
 
 func TestOpenAISelectAccountForModelWithExclusions_SetsStickyBinding(t *testing.T) {
 	sessionHash := "bind"
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 		},
@@ -668,7 +692,7 @@ func TestOpenAISelectAccountForModelWithExclusions_SetsStickyBinding(t *testing.
 func TestOpenAISelectAccountWithLoadAwareness_StickyWaitPlan(t *testing.T) {
 	sessionHash := "sticky-wait"
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 		},
@@ -701,7 +725,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyWaitPlan(t *testing.T) {
 
 func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerLoad(t *testing.T) {
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
@@ -735,7 +759,7 @@ func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerLoad(t *testing.T) {
 
 func TestOpenAISelectAccountForModelWithExclusions_StickyExcludedFallback(t *testing.T) {
 	sessionHash := "excluded"
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 2},
@@ -762,7 +786,7 @@ func TestOpenAISelectAccountForModelWithExclusions_StickyExcludedFallback(t *tes
 
 func TestOpenAISelectAccountForModelWithExclusions_StickyNonOpenAI(t *testing.T) {
 	sessionHash := "non-openai"
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformAnthropic, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 2},
@@ -787,7 +811,7 @@ func TestOpenAISelectAccountForModelWithExclusions_StickyNonOpenAI(t *testing.T)
 }
 
 func TestOpenAISelectAccountForModelWithExclusions_NoAccounts(t *testing.T) {
-	repo := stubOpenAIAccountRepo{accounts: []Account{}}
+	repo := &stubOpenAIAccountRepo{accounts: []Account{}}
 	cache := &stubGatewayCache{}
 
 	svc := &OpenAIGatewayService{
@@ -810,7 +834,7 @@ func TestOpenAISelectAccountForModelWithExclusions_NoAccounts(t *testing.T) {
 func TestOpenAISelectAccountWithLoadAwareness_NoCandidates(t *testing.T) {
 	groupID := int64(1)
 	resetAt := time.Now().Add(1 * time.Hour)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, RateLimitResetAt: &resetAt},
 		},
@@ -835,7 +859,7 @@ func TestOpenAISelectAccountWithLoadAwareness_NoCandidates(t *testing.T) {
 
 func TestOpenAISelectAccountWithLoadAwareness_AllFullWaitPlan(t *testing.T) {
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 		},
@@ -864,7 +888,7 @@ func TestOpenAISelectAccountWithLoadAwareness_AllFullWaitPlan(t *testing.T) {
 
 func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorNoAcquire(t *testing.T) {
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 		},
@@ -892,7 +916,7 @@ func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorNoAcquire(t *testing
 
 func TestOpenAISelectAccountWithLoadAwareness_MissingLoadInfo(t *testing.T) {
 	groupID := int64(1)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
@@ -924,7 +948,7 @@ func TestOpenAISelectAccountWithLoadAwareness_MissingLoadInfo(t *testing.T) {
 func TestOpenAISelectAccountForModelWithExclusions_LeastRecentlyUsed(t *testing.T) {
 	oldTime := time.Now().Add(-2 * time.Hour)
 	newTime := time.Now().Add(-1 * time.Hour)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Priority: 1, LastUsedAt: &newTime},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Priority: 1, LastUsedAt: &oldTime},
@@ -946,10 +970,87 @@ func TestOpenAISelectAccountForModelWithExclusions_LeastRecentlyUsed(t *testing.
 	}
 }
 
+func TestOpenAISelectAccountForModelWithExclusions_PrefersPlusOverAPIKeyPool(t *testing.T) {
+	repo := &stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Priority:    0,
+			},
+			{
+				ID:          2,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Priority:    9,
+				Credentials: map[string]any{"plan_type": "plus"},
+			},
+		},
+	}
+	cache := &stubGatewayCache{}
+
+	svc := &OpenAIGatewayService{
+		accountRepo: repo,
+		cache:       cache,
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(context.Background(), nil, "", "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountForModelWithExclusions error: %v", err)
+	}
+	if acc == nil || acc.ID != 2 {
+		t.Fatalf("expected plus account 2, got %+v", acc)
+	}
+}
+
+func TestOpenAISelectAccountForModelWithExclusions_PrefersFreeForNonImageRequests(t *testing.T) {
+	repo := &stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Priority:    0,
+				Credentials: map[string]any{"plan_type": "plus"},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Priority:    9,
+				Credentials: map[string]any{"plan_type": "free"},
+			},
+		},
+	}
+	cache := &stubGatewayCache{}
+
+	svc := &OpenAIGatewayService{
+		accountRepo: repo,
+		cache:       cache,
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(context.Background(), nil, "", "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountForModelWithExclusions error: %v", err)
+	}
+	if acc == nil || acc.ID != 2 {
+		t.Fatalf("expected free account 2, got %+v", acc)
+	}
+}
+
 func TestOpenAISelectAccountWithLoadAwareness_PreferNeverUsed(t *testing.T) {
 	groupID := int64(1)
 	lastUsed := time.Now().Add(-1 * time.Hour)
-	repo := stubOpenAIAccountRepo{
+	repo := &stubOpenAIAccountRepo{
 		accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, LastUsedAt: &lastUsed},
 			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
@@ -1697,6 +1798,41 @@ func TestOpenAIValidateUpstreamBaseURLDisabledAllowsHTTP(t *testing.T) {
 	if normalized != "http://not-https.example.com" {
 		t.Fatalf("expected raw url passthrough, got %q", normalized)
 	}
+}
+
+func TestOpenAIInvalidBaseURLTriggersFailoverAndUnschedule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+		},
+	}
+	repo := &stubOpenAIAccountRepo{}
+	svc := &OpenAIGatewayService{cfg: cfg, accountRepo: repo}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	account := &Account{
+		ID:          123,
+		Name:        "bad-http-account",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "http://not-https.example.com"},
+	}
+
+	_, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte("{}"), "token", false, "", false)
+	require.Error(t, err)
+	failoverErr := &UpstreamFailoverError{}
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Len(t, repo.setSchedulableCalls, 1)
+	require.Equal(t, int64(123), repo.setSchedulableCalls[0].id)
+	require.False(t, repo.setSchedulableCalls[0].schedulable)
+	require.Len(t, repo.setErrorCalls, 1)
+	require.Equal(t, int64(123), repo.setErrorCalls[0].id)
+	require.Contains(t, repo.setErrorCalls[0].msg, "invalid base_url")
 }
 
 func TestOpenAIValidateUpstreamBaseURLEnabledEnforcesAllowlist(t *testing.T) {

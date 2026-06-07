@@ -21,6 +21,7 @@ type rateLimitAccountRepoStub struct {
 	lastCredentials        map[string]any
 	lastErrorMsg           string
 	lastTempReason         string
+	lastTempUntil          time.Time
 }
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
@@ -32,6 +33,7 @@ func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, error
 func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.tempCalls++
 	r.lastTempReason = reason
+	r.lastTempUntil = until
 	return nil
 }
 
@@ -72,6 +74,84 @@ func (s *openAI403CounterCacheStub) ResetOpenAI403Count(_ context.Context, accou
 func (r *tokenCacheInvalidatorRecorder) InvalidateToken(ctx context.Context, account *Account) error {
 	r.accounts = append(r.accounts, account)
 	return r.err
+}
+
+type rateLimitAlertEmailSenderStub struct {
+	sends []rateLimitAlertSend
+}
+
+type rateLimitAlertSend struct {
+	to      string
+	subject string
+	body    string
+}
+
+func (s *rateLimitAlertEmailSenderStub) SendEmail(_ context.Context, to, subject, body string) error {
+	s.sends = append(s.sends, rateLimitAlertSend{to: to, subject: subject, body: body})
+	return nil
+}
+
+type rateLimitSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *rateLimitSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	if v, ok := s.values[key]; ok {
+		return &Setting{Key: key, Value: v}, nil
+	}
+	return nil, ErrSettingNotFound
+}
+
+func (s *rateLimitSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if v, ok := s.values[key]; ok {
+		return v, nil
+	}
+	return "", ErrSettingNotFound
+}
+
+func (s *rateLimitSettingRepoStub) Set(_ context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *rateLimitSettingRepoStub) List(_ context.Context) ([]*Setting, error) {
+	return nil, nil
+}
+
+func (s *rateLimitSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if v, ok := s.values[key]; ok {
+			out[key] = v
+		}
+	}
+	return out, nil
+}
+
+func (s *rateLimitSettingRepoStub) SetMultiple(_ context.Context, settings map[string]string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	for key, value := range settings {
+		s.values[key] = value
+	}
+	return nil
+}
+
+func (s *rateLimitSettingRepoStub) GetAll(_ context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (s *rateLimitSettingRepoStub) Delete(_ context.Context, key string) error {
+	delete(s.values, key)
+	return nil
 }
 
 func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *testing.T) {
@@ -125,6 +205,64 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 		require.Equal(t, 0, repo.tempCalls)
 		require.Empty(t, invalidator.accounts)
 	})
+}
+
+func TestRateLimitService_HandleUpstreamError_PoolModeInvalidAPIKeyTempUnschedulesAndAlerts(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	emailSender := &rateLimitAlertEmailSenderStub{}
+	settingRepo := &rateLimitSettingRepoStub{
+		values: map[string]string{
+			SettingKeyOpsEmailNotificationConfig: `{"alert":{"enabled":true,"recipients":["ops@example.com"],"min_severity":"critical","rate_limit_per_hour":0,"batching_window_seconds":0,"include_resolved_alerts":false},"report":{"enabled":false,"recipients":[]}}`,
+		},
+	}
+
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	service.SetSettingService(NewSettingService(settingRepo, &config.Config{}))
+	service.SetAlertEmailSender(emailSender)
+
+	account := &Account{
+		ID:       436,
+		Name:     "jsyai",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+
+	shouldDisable := service.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusUnauthorized,
+		http.Header{},
+		[]byte(`{"code":"INVALID_API_KEY","message":"Invalid API key"}`),
+	)
+
+	require.False(t, shouldDisable)
+	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Contains(t, repo.lastTempReason, "Invalid API key")
+	require.NotNil(t, account.TempUnschedulableUntil)
+	require.WithinDuration(t, repo.lastTempUntil, *account.TempUnschedulableUntil, time.Second)
+
+	require.Eventually(t, func() bool {
+		return len(emailSender.sends) == 3
+	}, 2*time.Second, 20*time.Millisecond)
+	for i := range emailSender.sends {
+		require.Equal(t, "ops@example.com", emailSender.sends[i].to)
+	}
+
+	shouldDisable = service.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusUnauthorized,
+		http.Header{},
+		[]byte(`{"code":"INVALID_API_KEY","message":"Invalid API key"}`),
+	)
+
+	require.False(t, shouldDisable)
+	require.Equal(t, 1, repo.tempCalls)
+	require.Len(t, emailSender.sends, 3)
 }
 
 // TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError

@@ -14,6 +14,9 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    groups: {
+      getAll: vi.fn().mockResolvedValue([])
+    },
     accounts: {
       importData: vi.fn()
     }

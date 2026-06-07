@@ -27,7 +27,7 @@ func TestOpenAISelectAccountForModelWithExclusions_ChannelMappedRestrictionRejec
 	}, map[int64]string{10: PlatformOpenAI}))
 
 	svc := &OpenAIGatewayService{
-		accountRepo: stubOpenAIAccountRepo{accounts: []Account{
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true},
 		}},
 		channelService: channelSvc,
@@ -54,7 +54,7 @@ func TestOpenAISelectAccountForModelWithExclusions_UpstreamRestrictionSkipsDisal
 	}, map[int64]string{10: PlatformOpenAI}))
 
 	svc := &OpenAIGatewayService{
-		accountRepo: stubOpenAIAccountRepo{accounts: []Account{
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{
 			{
 				ID:          1,
 				Platform:    PlatformOpenAI,
@@ -104,7 +104,7 @@ func TestOpenAISelectAccountForModelWithExclusions_StickyRestrictedUpstreamFalls
 		sessionBindings: map[string]int64{"openai:sticky-session": 1},
 	}
 	svc := &OpenAIGatewayService{
-		accountRepo: stubOpenAIAccountRepo{accounts: []Account{
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{
 			{
 				ID:          1,
 				Platform:    PlatformOpenAI,

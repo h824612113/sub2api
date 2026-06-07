@@ -249,6 +249,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
+			Description:                     apiKey.Group.Description,
 			Platform:                        apiKey.Group.Platform,
 			Status:                          apiKey.Group.Status,
 			SubscriptionType:                apiKey.Group.SubscriptionType,
@@ -318,6 +319,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		apiKey.Group = &Group{
 			ID:                              snapshot.Group.ID,
 			Name:                            snapshot.Group.Name,
+			Description:                     snapshot.Group.Description,
 			Platform:                        snapshot.Group.Platform,
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,

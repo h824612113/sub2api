@@ -51,8 +51,8 @@ func TestApplyCommercialRelayPresetCreatesGroupsAndPlans(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query max plan: %v", err)
 	}
-	if maxPlan.Price != 379 {
-		t.Fatalf("max plan price = %v, want 379", maxPlan.Price)
+	if maxPlan.Price != 529 {
+		t.Fatalf("max plan price = %v, want 529", maxPlan.Price)
 	}
 	if maxPlan.ValidityDays != 31 {
 		t.Fatalf("max plan validity days = %d, want 31", maxPlan.ValidityDays)
@@ -70,8 +70,11 @@ func TestApplyCommercialRelayPresetCreatesGroupsAndPlans(t *testing.T) {
 	if maxGroup.SubscriptionType != SubscriptionTypeSubscription {
 		t.Fatalf("max group subscription_type = %q, want %q", maxGroup.SubscriptionType, SubscriptionTypeSubscription)
 	}
-	if maxGroup.WeeklyLimitUsd == nil || *maxGroup.WeeklyLimitUsd != 900 {
-		t.Fatalf("max group weekly limit = %v, want 900", maxGroup.WeeklyLimitUsd)
+	if maxGroup.DailyLimitUsd == nil || *maxGroup.DailyLimitUsd != 200 {
+		t.Fatalf("max group daily limit = %v, want 200", maxGroup.DailyLimitUsd)
+	}
+	if maxGroup.WeeklyLimitUsd == nil || *maxGroup.WeeklyLimitUsd != 1200 {
+		t.Fatalf("max group weekly limit = %v, want 1200", maxGroup.WeeklyLimitUsd)
 	}
 }
 
