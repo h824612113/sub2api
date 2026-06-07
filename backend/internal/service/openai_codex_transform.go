@@ -50,7 +50,6 @@ var codexModelMap = map[string]string{
 	"gpt-5.1-codex-mini":         "gpt-5.3-codex",
 	"gpt-5.2-codex":              "gpt-5.2",
 	"codex-mini-latest":          "gpt-5.3-codex",
-	"codex-auto-review":          "gpt-5.3-codex",
 	"gpt-5-codex":                "gpt-5.3-codex",
 }
 
