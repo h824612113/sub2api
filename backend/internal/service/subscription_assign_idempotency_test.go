@@ -226,6 +226,24 @@ func (s *subscriptionUserSubRepoStub) UpdateNotes(_ context.Context, subscriptio
 	return nil
 }
 
+func (s *subscriptionUserSubRepoStub) Update(_ context.Context, sub *UserSubscription) error {
+	if sub == nil {
+		return ErrSubscriptionNilInput
+	}
+	existing := s.byID[sub.ID]
+	if existing == nil {
+		return ErrSubscriptionNotFound
+	}
+	oldKey := s.key(existing.UserID, existing.GroupID)
+	cp := *sub
+	s.byID[cp.ID] = &cp
+	if oldKey != s.key(cp.UserID, cp.GroupID) {
+		delete(s.byUserGroup, oldKey)
+	}
+	s.byUserGroup[s.key(cp.UserID, cp.GroupID)] = &cp
+	return nil
+}
+
 func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {
 	start := time.Now().UTC().Add(-24 * time.Hour)
 	groupRepo := &subscriptionGroupRepoStub{
