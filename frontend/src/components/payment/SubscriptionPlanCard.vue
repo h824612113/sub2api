@@ -30,7 +30,7 @@
             <span :class="['text-2xl font-extrabold tracking-tight', textClass]">{{ plan.price }}</span>
           </div>
           <span class="text-[11px] text-gray-400 dark:text-dark-500">/ {{ validitySuffix }}</span>
-          <div v-if="plan.original_price" class="mt-0.5 flex items-center justify-end gap-1.5">
+          <div v-if="showOriginalPrice" class="mt-0.5 flex items-center justify-end gap-1.5">
             <span class="text-xs text-gray-400 line-through dark:text-dark-500">${{ plan.original_price }}</span>
             <span :class="['rounded px-1 py-0.5 text-[10px] font-semibold', discountClass]">{{ discountText }}</span>
           </div>
@@ -47,19 +47,19 @@
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.peakRate') }}</span>
           <span class="text-right font-medium text-amber-700 dark:text-amber-300">{{ peakRateDisplay }}</span>
         </div>
-        <div v-if="plan.daily_limit_usd != null" class="flex items-center justify-between">
+        <div v-if="displayDailyLimitUSD != null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.dailyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatPlanLimit(displayDailyLimitUSD) }}</span>
         </div>
         <div v-if="plan.weekly_limit_usd != null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatPlanLimit(plan.weekly_limit_usd) }}</span>
         </div>
-        <div v-if="plan.monthly_limit_usd != null" class="flex items-center justify-between">
+        <div v-if="displayMonthlyLimitUSD != null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatPlanLimit(displayMonthlyLimitUSD) }}</span>
         </div>
-        <div v-if="plan.daily_limit_usd == null && plan.weekly_limit_usd == null && plan.monthly_limit_usd == null" class="flex items-center justify-between">
+        <div v-if="displayDailyLimitUSD == null && plan.weekly_limit_usd == null && displayMonthlyLimitUSD == null" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.quota') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.planCard.unlimited') }}</span>
         </div>
@@ -105,6 +105,7 @@ import type { SubscriptionPlan } from '@/types/payment'
 import type { UserSubscription } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
+import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 import {
   platformAccentBarClass,
   platformBadgeLightClass,
@@ -141,6 +142,38 @@ const discountText = computed(() => {
   return pct > 0 ? `-${pct}%` : ''
 })
 
+const showOriginalPrice = computed(() =>
+  props.plan.original_price != null && props.plan.original_price > props.plan.price
+)
+
+const HIDE_MONTHLY_LIMIT_PRODUCTS = new Set([
+  'openai_max_monthly',
+  'openai_ultra_monthly',
+])
+
+function extractFeatureLimitUSD(features: string[], label: '每日' | '每周' | '每月'): number | null {
+  const prefix = `${label} USD `
+  const line = features.find(feature => feature.startsWith(prefix))
+  if (!line) return null
+  const value = Number.parseFloat(line.slice(prefix.length).split(' ')[0] || '')
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function formatPlanLimit(value?: number | null): string {
+  return formatBillingDisplayUSD(value, props.plan.rate_multiplier)
+}
+
+const displayDailyLimitUSD = computed(() => {
+  if (props.plan.daily_limit_usd != null && props.plan.daily_limit_usd > 0) return props.plan.daily_limit_usd
+  return extractFeatureLimitUSD(props.plan.features, '每日')
+})
+
+const displayMonthlyLimitUSD = computed(() => {
+  if (HIDE_MONTHLY_LIMIT_PRODUCTS.has(props.plan.product_name ?? '')) return null
+  if (props.plan.monthly_limit_usd != null && props.plan.monthly_limit_usd > 0) return props.plan.monthly_limit_usd
+  return extractFeatureLimitUSD(props.plan.features, '每月')
+})
+
 const rateDisplay = computed(() => {
   const rate = props.plan.rate_multiplier ?? 1
   return `×${Number(rate.toPrecision(10))}`
@@ -169,8 +202,8 @@ const modelScopeLabels = computed(() => {
 
 const validitySuffix = computed(() => {
   const u = props.plan.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
+  if (u === 'month' || u === 'months') return t('payment.perMonth')
+  if (u === 'year' || u === 'years') return t('payment.perYear')
   return `${props.plan.validity_days}${t('payment.days')}`
 })
 </script>

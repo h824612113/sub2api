@@ -107,8 +107,8 @@
                   {{ t('userSubscriptions.daily') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.daily_limit_usd.toFixed(2)
+                  ${{ formatSubscriptionAmount(subscription.daily_usage_usd, subscription.group?.rate_multiplier) }} / ${{
+                    formatSubscriptionAmount(subscription.group.daily_limit_usd, subscription.group?.rate_multiplier)
                   }}
                 </span>
               </div>
@@ -144,8 +144,8 @@
                   {{ t('userSubscriptions.weekly') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ (subscription.weekly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.weekly_limit_usd.toFixed(2)
+                  ${{ formatSubscriptionAmount(subscription.weekly_usage_usd, subscription.group?.rate_multiplier) }} / ${{
+                    formatSubscriptionAmount(subscription.group.weekly_limit_usd, subscription.group?.rate_multiplier)
                   }}
                 </span>
               </div>
@@ -185,8 +185,8 @@
                   {{ t('userSubscriptions.monthly') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ (subscription.monthly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.monthly_limit_usd.toFixed(2)
+                  ${{ formatSubscriptionAmount(subscription.monthly_usage_usd, subscription.group?.rate_multiplier) }} / ${{
+                    formatSubscriptionAmount(subscription.group.monthly_limit_usd, subscription.group?.rate_multiplier)
                   }}
                 </span>
               </div>
@@ -257,6 +257,7 @@ import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly } from '@/utils/format'
+import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts } from '@/utils/subscriptionQuota'
@@ -310,6 +311,10 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+function formatSubscriptionAmount(value?: number | null, rateMultiplier?: number | null): string {
+  return formatBillingDisplayUSD(value, rateMultiplier)
 }
 
 function formatExpirationDate(expiresAt: string): string {

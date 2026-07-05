@@ -101,13 +101,20 @@ func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbe
 			PeakStart:          g.PeakStart,
 			PeakEnd:            g.PeakEnd,
 			PeakRateMultiplier: g.PeakRateMultiplier,
-			DailyLimitUSD:      g.DailyLimitUsd,
-			WeeklyLimitUSD:     g.WeeklyLimitUsd,
-			MonthlyLimitUSD:    g.MonthlyLimitUsd,
+			DailyLimitUSD:      normalizePlanLimit(g.DailyLimitUsd),
+			WeeklyLimitUSD:     normalizePlanLimit(g.WeeklyLimitUsd),
+			MonthlyLimitUSD:    normalizePlanLimit(g.MonthlyLimitUsd),
 			ModelScopes:        g.SupportedModelScopes,
 		}
 	}
 	return m
+}
+
+func normalizePlanLimit(limit *float64) *float64 {
+	if limit == nil || *limit <= 0 {
+		return nil
+	}
+	return limit
 }
 
 func (s *PaymentConfigService) ListPlans(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {

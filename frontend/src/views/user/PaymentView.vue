@@ -103,7 +103,7 @@
                 </div>
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
-                  <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
+                  <span v-if="selectedPlanShowOriginalPrice" class="text-sm text-gray-400 line-through dark:text-gray-500">
                     {{ formatSelectedSubscriptionPaymentAmount(selectedPlan.original_price) }}
                   </span>
                   <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedSubscriptionPaymentAmount(selectedPlan.price) }}</span>
@@ -127,19 +127,19 @@
                       {{ planPeakRateLabel(selectedPlan) }}
                     </div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd != null">
+                  <div v-if="selectedPlanDisplayDailyLimitUSD != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.dailyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.daily_limit_usd }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatSelectedPlanLimit(selectedPlanDisplayDailyLimitUSD) }}</div>
                   </div>
                   <div v-if="selectedPlan.weekly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.weekly_limit_usd }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatSelectedPlanLimit(selectedPlan.weekly_limit_usd) }}</div>
                   </div>
-                  <div v-if="selectedPlan.monthly_limit_usd != null">
+                  <div v-if="selectedPlanDisplayMonthlyLimitUSD != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.monthly_limit_usd }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatSelectedPlanLimit(selectedPlanDisplayMonthlyLimitUSD) }}</div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">
+                  <div v-if="selectedPlanDisplayDailyLimitUSD == null && selectedPlan.weekly_limit_usd == null && selectedPlanDisplayMonthlyLimitUSD == null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
@@ -263,6 +263,7 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
+import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -583,7 +584,8 @@ function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
 }
 
-function formatSelectedSubscriptionPaymentAmount(value: number): string {
+function formatSelectedSubscriptionPaymentAmount(value?: number | null): string {
+  if (value == null) return ''
   return formatSelectedPaymentAmount(roundPaymentAmount(value, selectedCurrency.value))
 }
 
@@ -706,10 +708,47 @@ const renewalPlans = computed(() => {
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
   const u = selectedPlan.value.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
+  if (u === 'month' || u === 'months') return t('payment.perMonth')
+  if (u === 'year' || u === 'years') return t('payment.perYear')
   return `${selectedPlan.value.validity_days}${t('payment.days')}`
 })
+
+const selectedPlanShowOriginalPrice = computed(() =>
+  selectedPlan.value?.original_price != null && selectedPlan.value.original_price > selectedPlan.value.price
+)
+
+const HIDE_MONTHLY_LIMIT_PRODUCTS = new Set([
+  'openai_max_monthly',
+  'openai_ultra_monthly',
+])
+
+function extractPlanFeatureLimitUSD(plan: SubscriptionPlan | null, label: '每日' | '每周' | '每月'): number | null {
+  if (!plan) return null
+  const prefix = `${label} USD `
+  const line = (plan.features || []).find(feature => feature.startsWith(prefix))
+  if (!line) return null
+  const value = Number.parseFloat(line.slice(prefix.length).split(' ')[0] || '')
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+const selectedPlanDisplayDailyLimitUSD = computed(() => {
+  const plan = selectedPlan.value
+  if (!plan) return null
+  if (plan.daily_limit_usd != null && plan.daily_limit_usd > 0) return plan.daily_limit_usd
+  return extractPlanFeatureLimitUSD(plan, '每日')
+})
+
+const selectedPlanDisplayMonthlyLimitUSD = computed(() => {
+  const plan = selectedPlan.value
+  if (!plan) return null
+  if (HIDE_MONTHLY_LIMIT_PRODUCTS.has(plan.product_name ?? '')) return null
+  if (plan.monthly_limit_usd != null && plan.monthly_limit_usd > 0) return plan.monthly_limit_usd
+  return extractPlanFeatureLimitUSD(plan, '每月')
+})
+
+function formatSelectedPlanLimit(value?: number | null): string {
+  return formatBillingDisplayUSD(value, selectedPlan.value?.rate_multiplier)
+}
 
 function planHasPeakRate(plan: SubscriptionPlan): boolean {
   return hasPeakRate(plan)
