@@ -436,8 +436,7 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
-	if err != nil {
+	if _, err = s.subscriptionSvc.AssignOrExtendSubscriptionBundle(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote}); err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")

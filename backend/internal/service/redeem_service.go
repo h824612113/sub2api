@@ -463,14 +463,14 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		validityDays := redeemCode.ValidityDays
 		if validityDays < 0 {
 			// 负数天数：缩短订阅，减到 0 则取消订阅
-			if err := s.reduceOrCancelSubscription(txCtx, userID, *redeemCode.GroupID, -validityDays, redeemCode.Code); err != nil {
+			if err := s.reduceOrCancelSubscriptionBundle(txCtx, userID, *redeemCode.GroupID, -validityDays, redeemCode.Code); err != nil {
 				return nil, fmt.Errorf("reduce or cancel subscription: %w", err)
 			}
 		} else {
 			if validityDays == 0 {
 				validityDays = 30
 			}
-			_, _, err := s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
+			_, err := s.subscriptionService.AssignOrExtendSubscriptionBundle(txCtx, &AssignSubscriptionInput{
 				UserID:       userID,
 				GroupID:      *redeemCode.GroupID,
 				ValidityDays: validityDays,
@@ -538,11 +538,18 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 			return
 		}
 		if redeemCode.GroupID != nil {
-			groupID := *redeemCode.GroupID
+			groupIDs := []int64{*redeemCode.GroupID}
+			if s.subscriptionService != nil {
+				if bundleIDs, err := s.subscriptionService.ResolveSubscriptionBundleGroupIDs(ctx, *redeemCode.GroupID); err == nil && len(bundleIDs) > 0 {
+					groupIDs = bundleIDs
+				}
+			}
 			go func() {
 				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				for _, groupID := range groupIDs {
+					_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				}
 			}()
 		}
 	}
@@ -638,6 +645,24 @@ func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit 
 		return nil, fmt.Errorf("get user redeem history: %w", err)
 	}
 	return codes, nil
+}
+
+func (s *RedeemService) reduceOrCancelSubscriptionBundle(ctx context.Context, userID, groupID int64, reduceDays int, code string) error {
+	groupIDs := []int64{groupID}
+	if s.subscriptionService != nil {
+		bundleIDs, err := s.subscriptionService.ResolveSubscriptionBundleGroupIDs(ctx, groupID)
+		if err != nil {
+			return err
+		}
+		groupIDs = bundleIDs
+	}
+
+	for _, gid := range groupIDs {
+		if err := s.reduceOrCancelSubscription(ctx, userID, gid, reduceDays, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // reduceOrCancelSubscription 缩短订阅天数，剩余天数 <= 0 时取消订阅

@@ -883,11 +883,6 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		return ErrSubscriptionInvalid
 	}
 
-	// 日限额仍按当前分组独立计算。
-	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
-		return ErrDailyLimitExceeded
-	}
-
 	pooledQuota, err := aggregatePooledSubscriptionQuota(ctx, s.subRepo, subscription, group)
 	if err != nil {
 		if s.circuitBreaker != nil {
@@ -895,6 +890,10 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		}
 		logger.LegacyPrintf("service.billing_cache", "ALERT: pooled subscription check failed for user %d group %d: %v", userID, group.ID, err)
 		return ErrBillingServiceUnavailable.WithCause(err)
+	}
+
+	if pooledQuota.HasDailyPool && pooledQuota.DailyLimit > 0 && pooledQuota.DailyUsage >= pooledQuota.DailyLimit {
+		return ErrDailyLimitExceeded
 	}
 
 	if pooledQuota.HasWeeklyPool && pooledQuota.WeeklyLimit > 0 && pooledQuota.WeeklyUsage >= pooledQuota.WeeklyLimit {

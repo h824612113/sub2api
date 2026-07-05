@@ -125,6 +125,7 @@ func GroupFromServiceShallow(g *service.Group) *Group {
 		return nil
 	}
 	out := groupFromServiceBase(g)
+	out.Description = service.PublicGroupDescription(out.Description)
 	return &out
 }
 

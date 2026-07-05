@@ -65,6 +65,20 @@ func (s *subscriptionGroupRepoStub) GetByID(context.Context, int64) (*Group, err
 	return s.group, nil
 }
 
+type subscriptionGroupRepoByIDStub struct {
+	groupRepoNoop
+	groups map[int64]*Group
+}
+
+func (s *subscriptionGroupRepoByIDStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	group := s.groups[id]
+	if group == nil {
+		return nil, ErrGroupNotFound
+	}
+	cp := *group
+	return &cp, nil
+}
+
 type userSubRepoNoop struct{}
 
 func (userSubRepoNoop) Create(context.Context, *UserSubscription) error {
@@ -133,6 +147,7 @@ type subscriptionUserSubRepoStub struct {
 	byID        map[int64]*UserSubscription
 	byUserGroup map[string]*UserSubscription
 	createCalls int
+	deletedIDs  []int64
 }
 
 func newSubscriptionUserSubRepoStub() *subscriptionUserSubRepoStub {
@@ -197,6 +212,17 @@ func (s *subscriptionUserSubRepoStub) GetByID(_ context.Context, id int64) (*Use
 	}
 	cp := *sub
 	return &cp, nil
+}
+
+func (s *subscriptionUserSubRepoStub) Delete(_ context.Context, id int64) error {
+	sub := s.byID[id]
+	if sub == nil {
+		return nil
+	}
+	delete(s.byID, id)
+	delete(s.byUserGroup, s.key(sub.UserID, sub.GroupID))
+	s.deletedIDs = append(s.deletedIDs, id)
+	return nil
 }
 
 func (s *subscriptionUserSubRepoStub) ExtendExpiry(_ context.Context, subscriptionID int64, newExpiresAt time.Time) error {
@@ -304,14 +330,21 @@ func TestAssignSubscriptionRenewsExpiredExistingSubscription(t *testing.T) {
 	}
 	subRepo := newSubscriptionUserSubRepoStub()
 	expiredAt := time.Now().Add(-48 * time.Hour).UTC()
+	oldWindowStart := startOfDay(expiredAt.AddDate(0, 0, -20))
 	subRepo.seed(&UserSubscription{
-		ID:        12,
-		UserID:    3001,
-		GroupID:   1,
-		StartsAt:  expiredAt.AddDate(0, 0, -30),
-		ExpiresAt: expiredAt,
-		Status:    SubscriptionStatusExpired,
-		Notes:     "old-note",
+		ID:                 12,
+		UserID:             3001,
+		GroupID:            1,
+		StartsAt:           expiredAt.AddDate(0, 0, -30),
+		ExpiresAt:          expiredAt,
+		Status:             SubscriptionStatusExpired,
+		DailyWindowStart:   &oldWindowStart,
+		WeeklyWindowStart:  &oldWindowStart,
+		MonthlyWindowStart: &oldWindowStart,
+		DailyUsageUSD:      10,
+		WeeklyUsageUSD:     20,
+		MonthlyUsageUSD:    30,
+		Notes:              "old-note",
 	})
 
 	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
@@ -328,8 +361,19 @@ func TestAssignSubscriptionRenewsExpiredExistingSubscription(t *testing.T) {
 	require.Equal(t, int64(12), sub.ID)
 	require.Equal(t, SubscriptionStatusActive, sub.Status)
 	require.Equal(t, 0, subRepo.createCalls, "renewing expired subscription should not create a new row")
+	require.True(t, sub.StartsAt.After(before) || sub.StartsAt.Equal(before), "renewed start should move forward from now")
+	require.True(t, sub.StartsAt.Before(after) || sub.StartsAt.Equal(after), "renewed start should be based on current time")
 	require.True(t, sub.ExpiresAt.After(before.AddDate(0, 0, 29)), "renewed expiry should move forward from now")
 	require.True(t, sub.ExpiresAt.Before(after.AddDate(0, 0, 31)), "renewed expiry should be based on current time")
+	require.NotNil(t, sub.DailyWindowStart)
+	require.NotNil(t, sub.WeeklyWindowStart)
+	require.NotNil(t, sub.MonthlyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.DailyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.WeeklyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.MonthlyWindowStart)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	require.Equal(t, 0.0, sub.WeeklyUsageUSD)
+	require.Equal(t, 0.0, sub.MonthlyUsageUSD)
 	require.Equal(t, "old-note\nnew-note", sub.Notes)
 }
 
@@ -397,6 +441,150 @@ func TestAssignSubscriptionKeepsWorkingWhenIdempotencyStoreUnavailable(t *testin
 	require.NoError(t, err)
 	require.NotNil(t, sub)
 	require.Equal(t, 1, subRepo.createCalls, "semantic idempotent endpoint should not depend on idempotency store availability")
+}
+
+func TestExtendSubscriptionBundleExtendsSiblingSubscription(t *testing.T) {
+	start := time.Now().UTC().Add(-24 * time.Hour)
+	expiresAt := start.AddDate(0, 0, 30)
+	groupRepo := &subscriptionGroupRepoByIDStub{groups: map[int64]*Group{
+		5:  {ID: 5, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+		30: {ID: 30, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+	}}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{ID: 101, UserID: 7001, GroupID: 5, StartsAt: start, ExpiresAt: expiresAt, Status: SubscriptionStatusActive})
+	subRepo.seed(&UserSubscription{ID: 102, UserID: 7001, GroupID: 30, StartsAt: start, ExpiresAt: expiresAt, Status: SubscriptionStatusActive})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	sub, err := svc.ExtendSubscriptionBundle(context.Background(), 101, 3)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(101), sub.ID)
+	require.Equal(t, expiresAt.AddDate(0, 0, 3), subRepo.byID[101].ExpiresAt)
+	require.Equal(t, expiresAt.AddDate(0, 0, 3), subRepo.byID[102].ExpiresAt)
+}
+
+func TestExtendExpiredSubscriptionRenewsWindowAnchor(t *testing.T) {
+	start := time.Now().UTC().AddDate(0, 0, -45)
+	expiresAt := start.AddDate(0, 0, 30)
+	oldWindowStart := start.AddDate(0, 0, 21)
+	groupRepo := &subscriptionGroupRepoByIDStub{groups: map[int64]*Group{
+		5: {ID: 5, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive},
+	}}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{
+		ID:                 301,
+		UserID:             9001,
+		GroupID:            5,
+		StartsAt:           start,
+		ExpiresAt:          expiresAt,
+		Status:             SubscriptionStatusExpired,
+		DailyWindowStart:   &oldWindowStart,
+		WeeklyWindowStart:  &oldWindowStart,
+		MonthlyWindowStart: &oldWindowStart,
+		DailyUsageUSD:      11,
+		WeeklyUsageUSD:     22,
+		MonthlyUsageUSD:    33,
+		Notes:              "old",
+	})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	before := time.Now()
+	sub, err := svc.ExtendSubscription(context.Background(), 301, 30)
+	after := time.Now()
+
+	require.NoError(t, err)
+	require.Equal(t, int64(301), sub.ID)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.True(t, sub.StartsAt.After(before) || sub.StartsAt.Equal(before))
+	require.True(t, sub.StartsAt.Before(after) || sub.StartsAt.Equal(after))
+	require.True(t, sub.ExpiresAt.After(before.AddDate(0, 0, 29)))
+	require.True(t, sub.ExpiresAt.Before(after.AddDate(0, 0, 31)))
+	require.NotNil(t, sub.DailyWindowStart)
+	require.NotNil(t, sub.WeeklyWindowStart)
+	require.NotNil(t, sub.MonthlyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.DailyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.WeeklyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.MonthlyWindowStart)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	require.Equal(t, 0.0, sub.WeeklyUsageUSD)
+	require.Equal(t, 0.0, sub.MonthlyUsageUSD)
+}
+
+func TestExtendExpiredSubscriptionBundleRenewsSiblingWindowAnchor(t *testing.T) {
+	start := time.Now().UTC().AddDate(0, 0, -45)
+	expiresAt := start.AddDate(0, 0, 30)
+	oldWindowStart := start.AddDate(0, 0, 21)
+	groupRepo := &subscriptionGroupRepoByIDStub{groups: map[int64]*Group{
+		5:  {ID: 5, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+		30: {ID: 30, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+	}}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{
+		ID:                 401,
+		UserID:             9002,
+		GroupID:            5,
+		StartsAt:           start,
+		ExpiresAt:          expiresAt,
+		Status:             SubscriptionStatusExpired,
+		WeeklyWindowStart:  &oldWindowStart,
+		MonthlyWindowStart: &oldWindowStart,
+		WeeklyUsageUSD:     22,
+		MonthlyUsageUSD:    33,
+	})
+	subRepo.seed(&UserSubscription{
+		ID:                 402,
+		UserID:             9002,
+		GroupID:            30,
+		StartsAt:           start,
+		ExpiresAt:          expiresAt,
+		Status:             SubscriptionStatusExpired,
+		WeeklyWindowStart:  &oldWindowStart,
+		MonthlyWindowStart: &oldWindowStart,
+		WeeklyUsageUSD:     44,
+		MonthlyUsageUSD:    55,
+	})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	before := time.Now()
+	sub, err := svc.ExtendSubscriptionBundle(context.Background(), 401, 30)
+	after := time.Now()
+
+	require.NoError(t, err)
+	require.Equal(t, int64(401), sub.ID)
+	for _, id := range []int64{401, 402} {
+		renewed := subRepo.byID[id]
+		require.NotNil(t, renewed)
+		require.Equal(t, SubscriptionStatusActive, renewed.Status)
+		require.True(t, renewed.StartsAt.After(before) || renewed.StartsAt.Equal(before))
+		require.True(t, renewed.StartsAt.Before(after) || renewed.StartsAt.Equal(after))
+		require.NotNil(t, renewed.WeeklyWindowStart)
+		require.NotNil(t, renewed.MonthlyWindowStart)
+		require.Equal(t, renewed.StartsAt, *renewed.WeeklyWindowStart)
+		require.Equal(t, renewed.StartsAt, *renewed.MonthlyWindowStart)
+		require.Equal(t, 0.0, renewed.WeeklyUsageUSD)
+		require.Equal(t, 0.0, renewed.MonthlyUsageUSD)
+	}
+}
+
+func TestRevokeSubscriptionBundleRevokesSiblingSubscription(t *testing.T) {
+	start := time.Now().UTC().Add(-24 * time.Hour)
+	groupRepo := &subscriptionGroupRepoByIDStub{groups: map[int64]*Group{
+		5:  {ID: 5, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+		30: {ID: 30, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+	}}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{ID: 201, UserID: 8001, GroupID: 5, StartsAt: start, ExpiresAt: start.AddDate(0, 0, 30), Status: SubscriptionStatusActive})
+	subRepo.seed(&UserSubscription{ID: 202, UserID: 8001, GroupID: 30, StartsAt: start, ExpiresAt: start.AddDate(0, 0, 30), Status: SubscriptionStatusActive})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	err := svc.RevokeSubscriptionBundle(context.Background(), 201)
+
+	require.NoError(t, err)
+	require.ElementsMatch(t, []int64{201, 202}, subRepo.deletedIDs)
+	_, err = subRepo.GetByID(context.Background(), 201)
+	require.ErrorIs(t, err, ErrSubscriptionNotFound)
+	_, err = subRepo.GetByID(context.Background(), 202)
+	require.ErrorIs(t, err, ErrSubscriptionNotFound)
 }
 
 func TestNormalizeAssignValidityDays(t *testing.T) {

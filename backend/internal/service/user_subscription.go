@@ -72,17 +72,25 @@ func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
-	if s.WeeklyWindowStart == nil {
+	return s.NeedsWeeklyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsWeeklyResetAt(now time.Time) bool {
+	if s == nil {
 		return false
 	}
-	return time.Since(*s.WeeklyWindowStart) >= 7*24*time.Hour
+	return subscriptionWindowExpired(s.WeeklyWindowStart, s.StartsAt, now, 7)
 }
 
 func (s *UserSubscription) NeedsMonthlyReset() bool {
-	if s.MonthlyWindowStart == nil {
+	return s.NeedsMonthlyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsMonthlyResetAt(now time.Time) bool {
+	if s == nil {
 		return false
 	}
-	return time.Since(*s.MonthlyWindowStart) >= 30*24*time.Hour
+	return subscriptionWindowExpired(s.MonthlyWindowStart, s.StartsAt, now, 30)
 }
 
 func (s *UserSubscription) DailyResetTime() *time.Time {
@@ -101,7 +109,7 @@ func (s *UserSubscription) WeeklyResetTime() *time.Time {
 	if s.WeeklyWindowStart == nil {
 		return nil
 	}
-	t := s.WeeklyWindowStart.Add(7 * 24 * time.Hour)
+	t := anchoredSubscriptionWindowResetTime(s.StartsAt, time.Now(), 7)
 	return &t
 }
 
@@ -109,7 +117,7 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	if s.MonthlyWindowStart == nil {
 		return nil
 	}
-	t := s.MonthlyWindowStart.Add(30 * 24 * time.Hour)
+	t := anchoredSubscriptionWindowResetTime(s.StartsAt, time.Now(), 30)
 	return &t
 }
 

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -51,7 +53,7 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 		return
 	}
 
-	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), subject.UserID)
+	subscriptions, err := h.subscriptionService.ListUserSubscriptionsForDisplay(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -73,7 +75,7 @@ func (h *SubscriptionHandler) GetActive(c *gin.Context) {
 		return
 	}
 
-	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
+	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptionsForDisplay(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -96,7 +98,7 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 	}
 
 	// Get all active subscriptions with progress
-	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
+	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptionsForDisplay(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -105,9 +107,8 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 	result := make([]SubscriptionProgressInfo, 0, len(subscriptions))
 	for i := range subscriptions {
 		sub := &subscriptions[i]
-		progress, err := h.subscriptionService.GetSubscriptionProgress(c.Request.Context(), sub.ID)
-		if err != nil {
-			// Skip subscriptions with errors
+		progress := h.subscriptionService.CalculateSubscriptionProgress(sub)
+		if progress == nil {
 			continue
 		}
 		result = append(result, SubscriptionProgressInfo{
@@ -129,13 +130,14 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 	}
 
 	// Get all active subscriptions
-	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
+	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptionsForDisplay(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	var totalUsed float64
+	seenUsagePools := make(map[string]bool)
 	items := make([]SubscriptionSummaryItem, 0, len(subscriptions))
 
 	for _, sub := range subscriptions {
@@ -169,7 +171,17 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 		}
 
 		// Track total usage (use monthly as the most comprehensive)
-		totalUsed += sub.MonthlyUsageUSD
+		usageKey := ""
+		if sub.Group != nil {
+			usageKey = sub.Group.QuotaPoolKey()
+		}
+		if usageKey == "" {
+			usageKey = strconv.FormatInt(sub.ID, 10)
+		}
+		if !seenUsagePools[usageKey] {
+			totalUsed += sub.MonthlyUsageUSD
+			seenUsagePools[usageKey] = true
+		}
 
 		items = append(items, item)
 	}

@@ -972,14 +972,54 @@ const platformFilterOptions = computed(() => [
   { value: 'antigravity', label: 'Antigravity' }
 ])
 
+function publicGroupDescription(description?: string | null): string | null {
+  if (!description?.trim()) return description || null
+  const lines = description
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line =>
+      line &&
+      !line.startsWith('quota_pool=') &&
+      !line.startsWith('sub2api.quota_pool=') &&
+      !line.startsWith('quota_pool_daily_limit=') &&
+      !line.startsWith('quota_pool_weekly_limit=') &&
+      !line.startsWith('quota_pool_monthly_limit=') &&
+      !line.startsWith('subscription_bundle_groups=') &&
+      !line.startsWith('sub2api.subscription_bundle_groups=')
+    )
+  return lines.length > 0 ? lines.join('\n') : null
+}
+
+function bundleRootGroupId(group: Group): number | null {
+  if (!group.description?.trim()) return null
+  const bundleLine = group.description
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .find(line =>
+      line.startsWith('subscription_bundle_groups=') ||
+      line.startsWith('sub2api.subscription_bundle_groups=')
+    )
+  if (!bundleLine) return null
+
+  const rawValue = bundleLine.split('=').slice(1).join('=')
+  const firstID = Number.parseInt(rawValue.split(',')[0]?.trim() || '', 10)
+  return Number.isFinite(firstID) && firstID > 0 ? firstID : null
+}
+
+function isAssignableSubscriptionGroup(group: Group): boolean {
+  const rootGroupId = bundleRootGroupId(group)
+  return rootGroupId === null || rootGroupId === group.id
+}
+
 // Group options for assign (only subscription type groups)
 const subscriptionGroupOptions = computed(() =>
   groups.value
     .filter((g) => g.subscription_type === 'subscription' && g.status === 'active')
+    .filter(isAssignableSubscriptionGroup)
     .map((g) => ({
       value: g.id,
       label: g.name,
-      description: g.description,
+      description: publicGroupDescription(g.description),
       platform: g.platform,
       subscriptionType: g.subscription_type,
       rate: g.rate_multiplier

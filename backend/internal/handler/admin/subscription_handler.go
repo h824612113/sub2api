@@ -144,7 +144,7 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 	// Get admin user ID from context
 	adminID := getAdminIDFromContext(c)
 
-	subscription, err := h.subscriptionService.AssignSubscription(c.Request.Context(), &service.AssignSubscriptionInput{
+	subscriptions, err := h.subscriptionService.AssignOrExtendSubscriptionBundle(c.Request.Context(), &service.AssignSubscriptionInput{
 		UserID:       req.UserID,
 		GroupID:      req.GroupID,
 		ValidityDays: req.ValidityDays,
@@ -156,7 +156,11 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
+	if len(subscriptions) == 0 {
+		response.Success(c, nil)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(&subscriptions[0]))
 }
 
 // BulkAssign handles bulk assigning subscriptions to multiple users
@@ -209,7 +213,7 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		Body:           req,
 	}
 	executeAdminIdempotentJSON(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		subscription, execErr := h.subscriptionService.ExtendSubscription(ctx, subscriptionID, req.Days)
+		subscription, execErr := h.subscriptionService.ExtendSubscriptionBundle(ctx, subscriptionID, req.Days)
 		if execErr != nil {
 			return nil, execErr
 		}
@@ -241,7 +245,7 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		response.BadRequest(c, "At least one of 'daily', 'weekly', or 'monthly' must be true")
 		return
 	}
-	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, req.Daily, req.Weekly, req.Monthly)
+	sub, err := h.subscriptionService.AdminResetQuotaBundle(c.Request.Context(), subscriptionID, req.Daily, req.Weekly, req.Monthly)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -258,7 +262,7 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 		return
 	}
 
-	err = h.subscriptionService.RevokeSubscription(c.Request.Context(), subscriptionID)
+	err = h.subscriptionService.RevokeSubscriptionBundle(c.Request.Context(), subscriptionID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -300,7 +304,7 @@ func (h *SubscriptionHandler) ListByUser(c *gin.Context) {
 		return
 	}
 
-	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), userID)
+	subscriptions, err := h.subscriptionService.ListUserSubscriptionsForDisplay(c.Request.Context(), userID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

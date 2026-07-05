@@ -55,7 +55,7 @@
               <div class="flex items-center gap-2">
                 <span
                   :class="[
-                    'rounded-full px-2 py-0.5 text-xs font-medium',
+                    'inline-flex min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold',
                     subscription.status === 'active'
                       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                       : subscription.status === 'expired'

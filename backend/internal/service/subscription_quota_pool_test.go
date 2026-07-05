@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,6 +15,7 @@ type quotaPoolUserSubRepoStub struct {
 
 	activeByUser  map[int64][]UserSubscription
 	activeByGroup map[int64]*UserSubscription
+	listSubs      []UserSubscription
 }
 
 func (s *quotaPoolUserSubRepoStub) ListActiveByUserID(_ context.Context, userID int64) ([]UserSubscription, error) {
@@ -30,6 +32,23 @@ func (s *quotaPoolUserSubRepoStub) GetActiveByUserIDAndGroupID(_ context.Context
 	}
 	cp := *sub
 	return &cp, nil
+}
+
+func (s *quotaPoolUserSubRepoStub) List(_ context.Context, params pagination.PaginationParams, _, _ *int64, _, _, _, _ string) ([]UserSubscription, *pagination.PaginationResult, error) {
+	subs := s.listSubs
+	if subs == nil {
+		for _, userSubs := range s.activeByUser {
+			subs = append(subs, userSubs...)
+		}
+	}
+	out := make([]UserSubscription, len(subs))
+	copy(out, subs)
+	return out, &pagination.PaginationResult{
+		Total:    int64(len(out)),
+		Page:     params.Page,
+		PageSize: params.PageSize,
+		Pages:    1,
+	}, nil
 }
 
 func quotaPoolSub(userID, groupID int64, group *Group, dailyUsage, weeklyUsage, monthlyUsage float64) UserSubscription {
@@ -124,6 +143,55 @@ func TestAggregatePooledSubscriptionQuota_SumsOnlyMatchingWindowPools(t *testing
 	require.Equal(t, 160.0, quota.MonthlyUsage)
 }
 
+func TestSubscriptionServiceList_NormalizesPooledDisplayPerUser(t *testing.T) {
+	groupA := &Group{
+		ID:              10,
+		Description:     "quota_pool=openai_shared\nquota_pool_weekly_limit=150\nquota_pool_monthly_limit=600",
+		WeeklyLimitUSD:  ptrFloat64QuotaPool(150),
+		MonthlyLimitUSD: ptrFloat64QuotaPool(600),
+	}
+	groupB := &Group{
+		ID:              11,
+		Description:     "quota_pool=openai_shared\nquota_pool_weekly_limit=150\nquota_pool_monthly_limit=600",
+		WeeklyLimitUSD:  ptrFloat64QuotaPool(150),
+		MonthlyLimitUSD: ptrFloat64QuotaPool(600),
+	}
+
+	userOneMain := quotaPoolSub(1, 10, groupA, 0, 6.54, 126.35)
+	userOneSibling := quotaPoolSub(1, 11, groupB, 0, 0, 0)
+	userTwoMain := quotaPoolSub(2, 10, groupA, 0, 0, 31.84)
+	userTwoSibling := quotaPoolSub(2, 11, groupB, 0, 0, 0)
+	repo := &quotaPoolUserSubRepoStub{
+		activeByUser: map[int64][]UserSubscription{
+			1: {userOneMain, userOneSibling},
+			2: {userTwoMain, userTwoSibling},
+		},
+		listSubs: []UserSubscription{userOneSibling, userTwoMain},
+	}
+	svc := NewSubscriptionService(nil, repo, nil, nil, nil)
+
+	subs, _, err := svc.List(context.Background(), 1, 20, nil, nil, "", "", "", "")
+	require.NoError(t, err)
+	require.Len(t, subs, 2)
+
+	byUserGroup := make(map[[2]int64]UserSubscription, len(subs))
+	for _, sub := range subs {
+		byUserGroup[[2]int64{sub.UserID, sub.GroupID}] = sub
+	}
+
+	require.Equal(t, 6.54, byUserGroup[[2]int64{1, 11}].WeeklyUsageUSD)
+	require.Equal(t, 126.35, byUserGroup[[2]int64{1, 11}].MonthlyUsageUSD)
+
+	_, hasUserOneMain := byUserGroup[[2]int64{1, 10}]
+	require.False(t, hasUserOneMain)
+
+	require.Equal(t, 31.84, byUserGroup[[2]int64{2, 10}].MonthlyUsageUSD)
+	require.Zero(t, byUserGroup[[2]int64{2, 10}].WeeklyUsageUSD)
+
+	require.Equal(t, 150.0, *byUserGroup[[2]int64{1, 11}].Group.WeeklyLimitUSD)
+	require.Equal(t, 600.0, *byUserGroup[[2]int64{1, 11}].Group.MonthlyLimitUSD)
+}
+
 func TestSubscriptionServiceValidateAndCheckLimits_AllowsIndividualWeeklyOverageWithinPool(t *testing.T) {
 	groupA := &Group{
 		ID:              10,
@@ -206,7 +274,7 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_AllowsIndividualWeeklyO
 			10: &current,
 		},
 	}
-	svc := NewBillingCacheService(nil, nil, repo, nil, nil, nil, &config.Config{})
+	svc := NewBillingCacheService(nil, nil, repo, nil, nil, nil, &config.Config{}, nil)
 	t.Cleanup(svc.Stop)
 
 	err := svc.checkSubscriptionEligibility(context.Background(), 1, groupA, &current)
