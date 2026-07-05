@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,16 @@ import (
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
+
+const (
+	quotaPoolKeyPrefix                   = "quota_pool="
+	quotaPoolKeyLegacyPrefix             = "sub2api.quota_pool="
+	quotaPoolDailyLimitPrefix            = "quota_pool_daily_limit="
+	quotaPoolWeeklyLimitPrefix           = "quota_pool_weekly_limit="
+	quotaPoolMonthlyLimitPrefix          = "quota_pool_monthly_limit="
+	subscriptionBundleGroupsPrefix       = "subscription_bundle_groups="
+	subscriptionBundleGroupsLegacyPrefix = "sub2api.subscription_bundle_groups="
+)
 
 type Group struct {
 	ID             int64
@@ -104,6 +115,111 @@ func (g *Group) HasWeeklyLimit() bool {
 
 func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
+}
+
+// QuotaPoolKey returns the optional shared quota pool key encoded in description.
+// Supported markers:
+// - quota_pool=<key>
+// - sub2api.quota_pool=<key>
+func (g *Group) QuotaPoolKey() string {
+	if g == nil {
+		return ""
+	}
+	for _, line := range strings.Split(g.Description, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, quotaPoolKeyLegacyPrefix):
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, quotaPoolKeyLegacyPrefix))
+		case strings.HasPrefix(trimmed, quotaPoolKeyPrefix):
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, quotaPoolKeyPrefix))
+		}
+	}
+	return ""
+}
+
+func (g *Group) QuotaPoolDailyLimit() *float64 {
+	return g.quotaPoolLimit(quotaPoolDailyLimitPrefix)
+}
+
+func (g *Group) QuotaPoolWeeklyLimit() *float64 {
+	return g.quotaPoolLimit(quotaPoolWeeklyLimitPrefix)
+}
+
+func (g *Group) QuotaPoolMonthlyLimit() *float64 {
+	return g.quotaPoolLimit(quotaPoolMonthlyLimitPrefix)
+}
+
+func (g *Group) quotaPoolLimit(prefix string) *float64 {
+	if g == nil {
+		return nil
+	}
+	for _, line := range strings.Split(g.Description, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		raw := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil || value <= 0 {
+			return nil
+		}
+		return &value
+	}
+	return nil
+}
+
+func (g *Group) SubscriptionBundleGroupIDs() []int64 {
+	if g == nil {
+		return nil
+	}
+	seen := map[int64]bool{}
+	var ids []int64
+	for _, line := range strings.Split(g.Description, "\n") {
+		trimmed := strings.TrimSpace(line)
+		var raw string
+		switch {
+		case strings.HasPrefix(trimmed, subscriptionBundleGroupsPrefix):
+			raw = strings.TrimSpace(strings.TrimPrefix(trimmed, subscriptionBundleGroupsPrefix))
+		case strings.HasPrefix(trimmed, subscriptionBundleGroupsLegacyPrefix):
+			raw = strings.TrimSpace(strings.TrimPrefix(trimmed, subscriptionBundleGroupsLegacyPrefix))
+		default:
+			continue
+		}
+		for _, part := range strings.Split(raw, ",") {
+			id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+			if err != nil || id <= 0 || seen[id] {
+				continue
+			}
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func PublicGroupDescription(description string) string {
+	if strings.TrimSpace(description) == "" {
+		return description
+	}
+	lines := make([]string, 0, len(strings.Split(description, "\n")))
+	for _, line := range strings.Split(description, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if isInternalGroupDescriptionLine(trimmed) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func isInternalGroupDescriptionLine(line string) bool {
+	return strings.HasPrefix(line, quotaPoolKeyPrefix) ||
+		strings.HasPrefix(line, quotaPoolKeyLegacyPrefix) ||
+		strings.HasPrefix(line, quotaPoolDailyLimitPrefix) ||
+		strings.HasPrefix(line, quotaPoolWeeklyLimitPrefix) ||
+		strings.HasPrefix(line, quotaPoolMonthlyLimitPrefix) ||
+		strings.HasPrefix(line, subscriptionBundleGroupsPrefix) ||
+		strings.HasPrefix(line, subscriptionBundleGroupsLegacyPrefix)
 }
 
 // GetImagePrice 根据 image_size 返回对应的图片生成价格

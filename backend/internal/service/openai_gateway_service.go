@@ -241,20 +241,21 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
+	ReasoningEffort       *string
+	Stream                bool
+	OpenAIWSMode          bool
+	UsageIncompleteReason string
+	ResponseHeaders       http.Header
+	Duration              time.Duration
+	FirstTokenMs          *int
+	ClientDisconnect      bool
+	ImageCount            int
+	ImageSize             string
+	ImageInputSize        string
+	ImageOutputSize       string
+	ImageOutputSizes      []string
+	ImageSizeSource       string
+	ImageSizeBreakdown    map[string]int
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -1949,7 +1950,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			continue
 		}
 
-		if s.isBetterAccount(fresh, selected) {
+		if s.isBetterAccount(ctx, fresh, selected) {
 			selected = fresh
 			selectedCompactTier = compactTier
 		}
@@ -1963,7 +1964,15 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 //
 // isBetterAccount checks if candidate is better than current.
 // Rules: higher priority (lower value) wins; same priority: never used > least recently used.
-func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool {
+func (s *OpenAIGatewayService) isBetterAccount(ctx context.Context, candidate, current *Account) bool {
+	if !OpenAIImageGenerationIntentFromContext(ctx) {
+		candidatePlanRank := openAINonImagePlanRank(candidate)
+		currentPlanRank := openAINonImagePlanRank(current)
+		if candidatePlanRank != currentPlanRank {
+			return candidatePlanRank < currentPlanRank
+		}
+	}
+
 	// 优先级更高（数值更小）
 	// Higher priority (lower value)
 	if candidate.Priority < current.Priority {
@@ -1988,6 +1997,21 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 	default:
 		// 都使用过，选择最久未使用的
 		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+	}
+}
+
+func openAINonImagePlanRank(account *Account) int {
+	switch {
+	case account == nil:
+		return 100
+	case account.IsOpenAIFree():
+		return 0
+	case account.IsOpenAIPlus():
+		return 1
+	case account.IsOpenAIApiKey():
+		return 2
+	default:
+		return 3
 	}
 }
 
@@ -3686,7 +3710,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, s.newOpenAIInvalidBaseURLFailoverError(ctx, account, err)
 			}
 			targetURL = buildOpenAIResponsesURL(validatedURL)
 		}
@@ -4477,7 +4501,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		} else {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, s.newOpenAIInvalidBaseURLFailoverError(ctx, account, err)
 			}
 			targetURL = buildOpenAIResponsesURL(validatedURL)
 		}
@@ -6021,6 +6045,27 @@ func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, erro
 	return normalized, nil
 }
 
+func (s *OpenAIGatewayService) newOpenAIInvalidBaseURLFailoverError(ctx context.Context, account *Account, err error) *UpstreamFailoverError {
+	message := "invalid base_url"
+	if err != nil {
+		message = err.Error()
+	}
+	if account != nil && s.accountRepo != nil {
+		_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+		_ = s.accountRepo.SetError(ctx, account.ID, message)
+	}
+	body, _ := json.Marshal(gin.H{
+		"error": gin.H{
+			"type":    "upstream_error",
+			"message": message,
+		},
+	})
+	return &UpstreamFailoverError{
+		StatusCode:   http.StatusBadGateway,
+		ResponseBody: body,
+	}
+}
+
 // buildOpenAIResponsesURL 组装 OpenAI Responses 端点。
 // - base 以 /v1 结尾：追加 /responses
 // - base 以其他版本段结尾（如 /v4）：追加 /responses
@@ -6336,6 +6381,14 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
+	}
+	if strings.TrimSpace(result.UsageIncompleteReason) != "" {
+		logger.L().Warn("openai_usage.skip_incomplete_usage",
+			zap.String("reason", result.UsageIncompleteReason),
+			zap.String("request_id", result.RequestID),
+			zap.String("model", result.Model),
+		)
+		return nil
 	}
 
 	apiKey := input.APIKey

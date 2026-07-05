@@ -68,7 +68,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_QuotaAutoPausedM
 	store := NewOpenAIWSStateStore(cache)
 	cfg := newOpenAIWSV2TestConfig()
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{account}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -329,7 +329,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_CapabilityMismat
 	store := NewOpenAIWSStateStore(cache)
 	cfg := newOpenAIWSV2TestConfig()
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{account}},
 		cache:              cache,
 		cfg:                cfg,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),

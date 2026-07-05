@@ -454,7 +454,7 @@ func (s *SubscriptionService) withSubscriptionUpdateTx(ctx context.Context, fn f
 
 func renewedSubscriptionTerm(existingSub *UserSubscription, notes string, startsAt, expiresAt time.Time) *UserSubscription {
 	renewed := *existingSub
-	windowStart := startOfDay(startsAt)
+	windowStart := startsAt
 	renewed.StartsAt = startsAt
 	renewed.ExpiresAt = expiresAt
 	renewed.Status = SubscriptionStatusActive
@@ -593,6 +593,10 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 		sub, getErr := s.userSubRepo.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
 		if getErr != nil {
 			return nil, false, getErr
+		}
+		if sub.Status == SubscriptionStatusExpired || !sub.ExpiresAt.After(time.Now()) {
+			renewed, _, renewErr := s.AssignOrExtendSubscription(ctx, input)
+			return renewed, true, renewErr
 		}
 		if conflictReason, conflict := detectAssignSemanticConflict(sub, input); conflict {
 			return nil, false, ErrSubscriptionAssignConflict.WithMetadata(map[string]string{
@@ -771,14 +775,19 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		return nil, ErrAdjustWouldExpire
 	}
 
-	if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
-		return nil, err
-	}
-
-	// 如果订阅已过期，恢复为active状态
-	if sub.Status == SubscriptionStatusExpired {
-		if err := s.userSubRepo.UpdateStatus(ctx, subscriptionID, SubscriptionStatusActive); err != nil {
+	if isExpired {
+		if err := s.updateExistingSubscriptionTerm(ctx, sub, "", now, newExpiresAt, true); err != nil {
 			return nil, err
+		}
+	} else {
+		if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
+			return nil, err
+		}
+
+		if sub.Status == SubscriptionStatusExpired {
+			if err := s.userSubRepo.UpdateStatus(ctx, subscriptionID, SubscriptionStatusActive); err != nil {
+				return nil, err
+			}
 		}
 	}
 

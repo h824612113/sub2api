@@ -652,6 +652,14 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 							}
 							if event.Response.Usage != nil {
 								usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+							} else {
+								logger.L().Warn(logPrefix+": terminal event missing usage",
+									zap.String("request_id", requestID),
+									zap.String("event_type", event.Type),
+									zap.String("response_id", event.Response.ID),
+									zap.String("response_status", event.Response.Status),
+								)
+								return event.Response, usage, "terminal event missing usage", acc, nil
 							}
 							return event.Response, usage, "", acc, nil
 						}
@@ -798,7 +806,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			Duration:              time.Since(startTime),
 			FirstTokenMs:          firstTokenMs,
 			UsageIncompleteReason: usageIncompleteReason,
-			ClientDisconnect: clientDisconnected,
+			ClientDisconnect:      clientDisconnected,
 		}
 	}
 

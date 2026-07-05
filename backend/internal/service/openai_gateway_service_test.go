@@ -27,7 +27,7 @@ var _ GatewayCache = (*stubGatewayCache)(nil)
 
 type stubOpenAIAccountRepo struct {
 	AccountRepository
-	accounts []Account
+	accounts            []Account
 	setSchedulableCalls []struct {
 		id          int64
 		schedulable bool
@@ -526,7 +526,7 @@ func TestOpenAISelectAccountWithLoadAwareness_ImageRateLimitSkipsOnlyImageReques
 		Priority:    1,
 	}
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{imageLimited, available}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{imageLimited, available}},
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
 	}
 
@@ -573,7 +573,7 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulableWhenNoConcurre
 	}
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{rateLimited, available}},
+		accountRepo: &stubOpenAIAccountRepo{accounts: []Account{rateLimited, available}},
 		// concurrencyService is nil, forcing the non-load-batch selection path.
 	}
 
@@ -640,7 +640,7 @@ func TestOpenAISelectAccountForModelWithExclusions_StickyOutsideGroupClearsSessi
 	}
 
 	svc := &OpenAIGatewayService{
-		accountRepo: repo,
+		accountRepo: &repo,
 		cache:       cache,
 	}
 
@@ -712,7 +712,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyOutsideGroupClearsSession(t 
 	}
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        repo,
+		accountRepo:        &repo,
 		cache:              cache,
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
 	}

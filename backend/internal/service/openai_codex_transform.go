@@ -913,12 +913,11 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 }
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
-	if mapped, ok := normalizeKnownCodexModel(model); ok {
-		// Normalize internal/legacy Codex aliases for all account types so they
-		// never reach passthrough upstreams verbatim.
-		if strings.EqualFold(strings.TrimSpace(model), "codex-auto-review") {
-			return mapped
+	if strings.EqualFold(strings.TrimSpace(model), "codex-auto-review") {
+		if account != nil && account.Type == AccountTypeAPIKey {
+			return "gpt-5.3-codex"
 		}
+		return "codex-auto-review"
 	}
 	if account == nil || account.Type == AccountTypeOAuth {
 		return normalizeCodexModel(model)
