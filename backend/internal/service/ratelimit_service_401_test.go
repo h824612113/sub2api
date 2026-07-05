@@ -21,25 +21,27 @@ type rateLimitAccountRepoStub struct {
 	lastCredentials        map[string]any
 	lastErrorMsg           string
 	lastTempReason         string
-	lastTempUntil          time.Time
+	lastErrorID            int64
+	lastTempID             int64
 }
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
+	r.lastErrorID = id
 	r.lastErrorMsg = errorMsg
 	return nil
 }
 
 func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.tempCalls++
+	r.lastTempID = id
 	r.lastTempReason = reason
-	r.lastTempUntil = until
 	return nil
 }
 
 func (r *rateLimitAccountRepoStub) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
 	r.updateCredentialsCalls++
-	r.lastCredentials = cloneCredentials(credentials)
+	r.lastCredentials = shallowCopyMap(credentials)
 	return nil
 }
 
@@ -76,84 +78,6 @@ func (r *tokenCacheInvalidatorRecorder) InvalidateToken(ctx context.Context, acc
 	return r.err
 }
 
-type rateLimitAlertEmailSenderStub struct {
-	sends []rateLimitAlertSend
-}
-
-type rateLimitAlertSend struct {
-	to      string
-	subject string
-	body    string
-}
-
-func (s *rateLimitAlertEmailSenderStub) SendEmail(_ context.Context, to, subject, body string) error {
-	s.sends = append(s.sends, rateLimitAlertSend{to: to, subject: subject, body: body})
-	return nil
-}
-
-type rateLimitSettingRepoStub struct {
-	values map[string]string
-}
-
-func (s *rateLimitSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
-	if v, ok := s.values[key]; ok {
-		return &Setting{Key: key, Value: v}, nil
-	}
-	return nil, ErrSettingNotFound
-}
-
-func (s *rateLimitSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
-	if v, ok := s.values[key]; ok {
-		return v, nil
-	}
-	return "", ErrSettingNotFound
-}
-
-func (s *rateLimitSettingRepoStub) Set(_ context.Context, key, value string) error {
-	if s.values == nil {
-		s.values = map[string]string{}
-	}
-	s.values[key] = value
-	return nil
-}
-
-func (s *rateLimitSettingRepoStub) List(_ context.Context) ([]*Setting, error) {
-	return nil, nil
-}
-
-func (s *rateLimitSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
-	out := make(map[string]string, len(keys))
-	for _, key := range keys {
-		if v, ok := s.values[key]; ok {
-			out[key] = v
-		}
-	}
-	return out, nil
-}
-
-func (s *rateLimitSettingRepoStub) SetMultiple(_ context.Context, settings map[string]string) error {
-	if s.values == nil {
-		s.values = map[string]string{}
-	}
-	for key, value := range settings {
-		s.values[key] = value
-	}
-	return nil
-}
-
-func (s *rateLimitSettingRepoStub) GetAll(_ context.Context) (map[string]string, error) {
-	out := make(map[string]string, len(s.values))
-	for key, value := range s.values {
-		out[key] = value
-	}
-	return out, nil
-}
-
-func (s *rateLimitSettingRepoStub) Delete(_ context.Context, key string) error {
-	delete(s.values, key)
-	return nil
-}
-
 func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *testing.T) {
 	t.Run("gemini", func(t *testing.T) {
 		repo := &rateLimitAccountRepoStub{}
@@ -186,9 +110,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 		require.Len(t, invalidator.accounts, 1)
 	})
 
-	t.Run("antigravity_401_uses_SetError", func(t *testing.T) {
-		// Antigravity 401 由 applyErrorPolicy 的 temp_unschedulable_rules 控制，
-		// HandleUpstreamError 中走 SetError 路径。
+	t.Run("antigravity_401_sets_temp_unschedulable", func(t *testing.T) {
 		repo := &rateLimitAccountRepoStub{}
 		invalidator := &tokenCacheInvalidatorRecorder{}
 		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
@@ -197,73 +119,62 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 			ID:       100,
 			Platform: PlatformAntigravity,
 			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"access_token":  "expired-at",
+				"refresh_token": "rt-100",
+			},
 		}
 
 		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
 
 		require.True(t, shouldDisable)
-		require.Equal(t, 1, repo.setErrorCalls)
-		require.Equal(t, 0, repo.tempCalls)
-		require.Empty(t, invalidator.accounts)
+		require.Equal(t, 0, repo.setErrorCalls, "Antigravity OAuth 401 must keep status=active so refresh worker can recover it")
+		require.Equal(t, 1, repo.tempCalls)
+		require.Equal(t, int64(100), repo.lastTempID)
+		require.Contains(t, repo.lastTempReason, "invalid or expired credentials")
+		require.Len(t, invalidator.accounts, 1)
+		require.Equal(t, int64(100), invalidator.accounts[0].ID)
 	})
 }
 
-func TestRateLimitService_HandleUpstreamError_PoolModeInvalidAPIKeyTempUnschedulesAndAlerts(t *testing.T) {
+// TestRateLimitService_HandleUpstreamError_SparkShadow401RedirectsToParent 外审第9轮:影子无独立凭据,
+// 401(母账号 token 问题)必须重定向到凭据 owner(母账号)——母账号 temp-unschedulable + token cache 失效,
+// 影子不得被永久禁用(否则母账号可恢复的 token 问题会把影子永久打死)。
+func TestRateLimitService_HandleUpstreamError_SparkShadow401RedirectsToParent(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
-	emailSender := &rateLimitAlertEmailSenderStub{}
-	settingRepo := &rateLimitSettingRepoStub{
-		values: map[string]string{
-			SettingKeyOpsEmailNotificationConfig: `{"alert":{"enabled":true,"recipients":["ops@example.com"],"min_severity":"critical","rate_limit_per_hour":0,"batching_window_seconds":0,"include_resolved_alerts":false},"report":{"enabled":false,"recipients":[]}}`,
-		},
-	}
-
+	repo.accountsByID = map[int64]*Account{}
+	invalidator := &tokenCacheInvalidatorRecorder{}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-	service.SetSettingService(NewSettingService(settingRepo, &config.Config{}))
-	service.SetAlertEmailSender(emailSender)
+	service.SetTokenCacheInvalidator(invalidator)
 
-	account := &Account{
-		ID:       436,
-		Name:     "jsyai",
-		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"pool_mode": true,
-		},
+	const parentID = int64(500)
+	mother := &Account{
+		ID:          parentID,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"refresh_token": "rt-mother"},
+	}
+	repo.accountsByID[parentID] = mother
+
+	shadowParent := parentID
+	shadow := &Account{
+		ID:              501,
+		Platform:        PlatformOpenAI,
+		Type:            AccountTypeOAuth,
+		ParentAccountID: &shadowParent,
+		QuotaDimension:  QuotaDimensionSpark,
+		// 影子不持凭据:GetCredential("refresh_token") == ""
 	}
 
-	shouldDisable := service.HandleUpstreamError(
-		context.Background(),
-		account,
-		http.StatusUnauthorized,
-		http.Header{},
-		[]byte(`{"code":"INVALID_API_KEY","message":"Invalid API key"}`),
-	)
+	shouldDisable := service.HandleUpstreamError(context.Background(), shadow, 401, http.Header{}, []byte("unauthorized"))
 
-	require.False(t, shouldDisable)
+	require.True(t, shouldDisable)
+	require.Equal(t, 0, repo.setErrorCalls, "spark shadow must not be permanently disabled on a parent-token 401")
 	require.Equal(t, 1, repo.tempCalls)
-	require.Equal(t, 0, repo.setErrorCalls)
-	require.Contains(t, repo.lastTempReason, "Invalid API key")
-	require.NotNil(t, account.TempUnschedulableUntil)
-	require.WithinDuration(t, repo.lastTempUntil, *account.TempUnschedulableUntil, time.Second)
-
-	require.Eventually(t, func() bool {
-		return len(emailSender.sends) == 3
-	}, 2*time.Second, 20*time.Millisecond)
-	for i := range emailSender.sends {
-		require.Equal(t, "ops@example.com", emailSender.sends[i].to)
-	}
-
-	shouldDisable = service.HandleUpstreamError(
-		context.Background(),
-		account,
-		http.StatusUnauthorized,
-		http.Header{},
-		[]byte(`{"code":"INVALID_API_KEY","message":"Invalid API key"}`),
-	)
-
-	require.False(t, shouldDisable)
-	require.Equal(t, 1, repo.tempCalls)
-	require.Len(t, emailSender.sends, 3)
+	require.Equal(t, parentID, repo.lastTempID, "temp-unschedulable must target the credential owner (parent)")
+	require.Len(t, invalidator.accounts, 1)
+	require.Equal(t, parentID, invalidator.accounts[0].ID, "token cache invalidation must target the parent")
 }
 
 // TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError
@@ -384,5 +295,28 @@ func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t 
 		require.True(t, shouldDisable)
 		require.Equal(t, 1, repo.setErrorCalls)
 		require.Equal(t, 0, repo.tempCalls)
+	})
+
+	t.Run("antigravity_no_refresh_token_sets_error", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		invalidator := &tokenCacheInvalidatorRecorder{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       2883,
+			Platform: PlatformAntigravity,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token": "expired-at",
+			},
+		}
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls, "Antigravity OAuth without refresh_token cannot self-recover")
+		require.Equal(t, 0, repo.tempCalls)
+		require.Contains(t, repo.lastErrorMsg, "refresh_token missing")
+		require.Len(t, invalidator.accounts, 1)
 	})
 }

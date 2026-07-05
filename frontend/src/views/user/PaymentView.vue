@@ -37,70 +37,6 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
-            <div class="card p-5">
-              <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-[0.18em] text-primary-500">Balance Packs</p>
-                  <h3 class="mt-1 text-lg font-bold text-gray-900 dark:text-white">补量包</h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">购买后使用兑换码直接充值到账户余额</p>
-                </div>
-                <p class="text-xs text-gray-400 dark:text-gray-500">适合订阅额度不够时临时补量</p>
-              </div>
-              <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <div
-                  v-for="pkg in topUpPackages"
-                  :key="pkg.balance"
-                  class="group rounded-2xl border border-gray-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-lg dark:border-dark-700 dark:bg-dark-800"
-                >
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <p class="text-xs font-medium text-primary-500">{{ pkg.tag }}</p>
-                      <h4 class="mt-1 text-base font-bold text-gray-900 dark:text-white">{{ pkg.name }}</h4>
-                    </div>
-                    <span class="rounded-full bg-primary-50 px-2 py-1 text-[11px] font-medium text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
-                      余额直充
-                    </span>
-                  </div>
-                  <div class="mt-4">
-                    <div class="flex items-baseline gap-1">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">¥</span>
-                      <span class="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">{{ pkg.price }}</span>
-                    </div>
-                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">到账 USD {{ pkg.balance }}</p>
-                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ pkg.note }}</p>
-                  </div>
-                  <button
-                    type="button"
-                    class="mt-4 w-full rounded-xl bg-primary-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:scale-[0.98]"
-                    @click="openTopUpPackageShop"
-                  >
-                    去补给
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div v-if="supportQQ" class="card border-blue-100 bg-blue-50/70 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="rounded-lg bg-blue-100 p-2 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300">
-                    <Icon name="chat" size="md" />
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-blue-900 dark:text-blue-100">{{ t('payment.support.title') }}</p>
-                    <p class="mt-0.5 text-sm text-blue-700 dark:text-blue-300">QQ: {{ supportQQ }}</p>
-                  </div>
-                </div>
-                <a
-                  :href="supportQQUrl"
-                  rel="noopener"
-                  class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
-                  @click.prevent="openQQSupport"
-                >
-                  {{ t('payment.support.openQQ') }}
-                  <Icon name="externalLink" size="sm" />
-                </a>
-              </div>
-            </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -167,10 +103,10 @@
                 </div>
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
-                  <span v-if="selectedPlanShowOriginalPrice" class="text-sm text-gray-400 line-through dark:text-gray-500">
-                    {{ formatSelectedPaymentAmount(selectedPlan.original_price ?? selectedPlan.price) }}
+                  <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
+                    {{ formatSelectedSubscriptionPaymentAmount(selectedPlan.original_price) }}
                   </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedPaymentAmount(selectedPlan.price) }}</span>
+                  <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedSubscriptionPaymentAmount(selectedPlan.price) }}</span>
                   <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix }}</span>
                 </div>
                 <!-- Description -->
@@ -185,19 +121,25 @@
                       <span :class="['text-lg font-bold', planTextClass]">×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
                     </div>
                   </div>
-                  <div v-if="selectedPlanDisplayDailyLimitUSD != null">
+                  <div v-if="planHasPeakRate(selectedPlan)">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.peakRate') }}</span>
+                    <div class="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      {{ planPeakRateLabel(selectedPlan) }}
+                    </div>
+                  </div>
+                  <div v-if="selectedPlan.daily_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.dailyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatSelectedPlanLimit(selectedPlanDisplayDailyLimitUSD) }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.daily_limit_usd }}</div>
                   </div>
                   <div v-if="selectedPlan.weekly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatSelectedPlanLimit(selectedPlan.weekly_limit_usd) }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.weekly_limit_usd }}</div>
                   </div>
-                  <div v-if="selectedPlanDisplayMonthlyLimitUSD != null">
+                  <div v-if="selectedPlan.monthly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatSelectedPlanLimit(selectedPlanDisplayMonthlyLimitUSD) }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.monthly_limit_usd }}</div>
                   </div>
-                  <div v-if="selectedPlanDisplayDailyLimitUSD == null && selectedPlan.weekly_limit_usd == null && selectedPlanDisplayMonthlyLimitUSD == null">
+                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
@@ -214,7 +156,7 @@
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(selectedPlan.price) }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subPaymentAmount) }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
@@ -231,7 +173,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(feeRate > 0 ? subTotalAmount : selectedPlan.price) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -258,6 +200,7 @@
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
+                        <span v-if="subscriptionHasPeakRate(sub)">{{ t('payment.planCard.peakRate') }}: {{ subscriptionPeakRateLabel(sub) }}</span>
                         <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
                         <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
                         <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
@@ -319,6 +262,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
+import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -336,7 +280,6 @@ import {
   writePaymentRecoverySnapshot,
 } from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
-import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -353,23 +296,6 @@ const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
-const SUBSCRIPTION_CARD_SHOP_URL = 'https://pay.ldxp.cn/shop/7HOK84LL'
-const TOPUP_CARD_SHOP_URL = 'https://pay.ldxp.cn/shop/7HOK84LL'
-
-interface TopUpPackage {
-  name: string
-  balance: number
-  price: string
-  tag: string
-  note: string
-}
-
-const topUpPackages: TopUpPackage[] = [
-  { name: '补量包 100 刀', balance: 100, price: '24.99', tag: 'Starter', note: '适合轻量补充额度' },
-  { name: '补量包 300 刀', balance: 300, price: '74.99', tag: 'Popular', note: '适合常规加量使用' },
-  { name: '补量包 500 刀', balance: 500, price: '119.99', tag: 'Value', note: '适合高频补量需求' },
-  { name: '补量包 1000 刀', balance: 1000, price: '229.99', tag: 'Max', note: '适合大额备用额度' },
-]
 
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
@@ -377,6 +303,14 @@ const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions
 function getDaysRemaining(expiresAt: string): number {
   const diff = new Date(expiresAt).getTime() - Date.now()
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
+function subscriptionHasPeakRate(sub: { group?: PeakRateFields | null }): boolean {
+  return hasPeakRate(sub.group)
+}
+
+function subscriptionPeakRateLabel(sub: { group?: PeakRateFields | null }): string {
+  return formatPeakRateWindow(sub.group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 }
 
 const loading = ref(true)
@@ -465,42 +399,6 @@ async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promi
 }
 
 const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
-const supportQQ = computed(() => appStore.contactQQ.trim())
-const supportQQClientUrl = computed(() => buildQQClientUrl(supportQQ.value))
-const supportQQUrl = computed(() =>
-  `https://wpa.qq.com/msgrd?v=3&uin=${encodeURIComponent(supportQQ.value)}&site=qq&menu=yes`
-)
-
-function buildQQClientUrl(qq: string): string {
-  const encoded = encodeURIComponent(qq)
-  if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)) {
-    return `mqqwpa://im/chat?chat_type=wpa&uin=${encoded}&version=1&src_type=web`
-  }
-  return `tencent://message/?uin=${encoded}&Site=qq&Menu=yes`
-}
-
-function openQQSupport() {
-  if (!supportQQ.value || typeof window === 'undefined') return
-
-  const fallbackUrl = supportQQUrl.value
-  const startedAt = Date.now()
-  let pageHidden = false
-
-  const markHidden = () => {
-    pageHidden = true
-  }
-  window.addEventListener('blur', markHidden, { once: true })
-  document.addEventListener('visibilitychange', markHidden, { once: true })
-  window.location.href = supportQQClientUrl.value
-
-  window.setTimeout(() => {
-    window.removeEventListener('blur', markHidden)
-    document.removeEventListener('visibilitychange', markHidden)
-    if (!pageHidden && Date.now() - startedAt < 2500) {
-      window.open(fallbackUrl, '_blank', 'noopener')
-    }
-  }, 1200)
-}
 
 function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
   if (typeof window === 'undefined' || !snapshot.orderId) return
@@ -611,7 +509,7 @@ const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
-  return multiplier > 0 ? multiplier : 1
+  return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
 
@@ -658,8 +556,35 @@ const localeCode = computed(() => {
   return undefined
 })
 
+function currencyFractionDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
+}
+
+function roundPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.round(value * factor) / factor
+}
+
+function ceilPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.ceil(value * factor) / factor
+}
+
 function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
+}
+
+function formatSelectedSubscriptionPaymentAmount(value: number): string {
+  return formatSelectedPaymentAmount(roundPaymentAmount(value, selectedCurrency.value))
 }
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -706,34 +631,45 @@ const canSubmit = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
-// Subscription-specific: method options based on plan price
+const subPaymentAmount = computed(() => {
+  const price = selectedPlan.value?.price ?? 0
+  return roundPaymentAmount(price, selectedCurrency.value)
+})
+
+const subFeeAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return 0
+  return ceilPaymentAmount((subPaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
+})
+
+const subTotalAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return subPaymentAmount.value
+  return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
+})
+
+function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = roundPaymentAmount(value, currency)
+  if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
+  const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
+  return roundPaymentAmount(paymentAmount + fee, currency)
+}
+
+// Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
-  const planPrice = selectedPlan.value?.price ?? 0
+  const price = selectedPlan.value?.price ?? 0
   return enabledMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
+    const currency = normalizePaymentCurrency(ml?.currency)
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(planPrice, type),
+      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
     }
   })
 })
 
-const subFeeAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return 0
-  return Math.ceil(((price * feeRate.value) / 100) * 100) / 100
-})
-
-const subTotalAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return price
-  return Math.round((price + subFeeAmount.value) * 100) / 100
-})
-
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
+    && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
@@ -758,9 +694,6 @@ const paymentButtonClass = computed(() => {
 // Subscription confirm: platform accent colors (clean card, no gradient)
 const planBadgeClass = computed(() => platformBadgeClass(selectedPlan.value?.group_platform || ''))
 const planTextClass = computed(() => platformTextClass(selectedPlan.value?.group_platform || ''))
-const selectedPlanShowOriginalPrice = computed(() =>
-  selectedPlan.value?.original_price != null && selectedPlan.value.original_price > selectedPlan.value.price
-)
 
 // Renewal modal state
 const showRenewalModal = ref(false)
@@ -773,57 +706,29 @@ const renewalPlans = computed(() => {
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
   const u = selectedPlan.value.validity_unit || 'day'
-  if (u === 'month' || u === 'months') return t('payment.perMonth')
-  if (u === 'year' || u === 'years') return t('payment.perYear')
+  if (u === 'month') return t('payment.perMonth')
+  if (u === 'year') return t('payment.perYear')
   return `${selectedPlan.value.validity_days}${t('payment.days')}`
 })
 
-const HIDE_MONTHLY_LIMIT_PRODUCTS = new Set([
-  'openai_max_monthly',
-  'openai_ultra_monthly',
-])
-
-function extractPlanFeatureLimitUSD(
-  features: string[] | undefined,
-  label: '每日' | '每周' | '每月',
-): number | null {
-  if (!features || features.length === 0) return null
-  const prefix = `${label} USD `
-  const line = features.find(feature => feature.startsWith(prefix))
-  if (!line) return null
-  const value = Number.parseFloat(line.slice(prefix.length).split(' ')[0] || '')
-  return Number.isFinite(value) && value > 0 ? value : null
+function planHasPeakRate(plan: SubscriptionPlan): boolean {
+  return hasPeakRate(plan)
 }
 
-const selectedPlanDisplayDailyLimitUSD = computed(() => {
-  if (!selectedPlan.value) return null
-  if (selectedPlan.value.daily_limit_usd != null && selectedPlan.value.daily_limit_usd > 0) return selectedPlan.value.daily_limit_usd
-  return extractPlanFeatureLimitUSD(selectedPlan.value.features, '每日')
-})
-
-const selectedPlanDisplayMonthlyLimitUSD = computed(() => {
-  if (!selectedPlan.value) return null
-  if (HIDE_MONTHLY_LIMIT_PRODUCTS.has(selectedPlan.value.product_name ?? '')) return null
-  if (selectedPlan.value.monthly_limit_usd != null) return selectedPlan.value.monthly_limit_usd
-  return extractPlanFeatureLimitUSD(selectedPlan.value.features, '每月')
-})
-
-function formatSelectedPlanLimit(value?: number | null): string {
-  return formatBillingDisplayUSD(value, selectedPlan.value?.rate_multiplier)
+function planPeakRateLabel(plan: SubscriptionPlan): string {
+  return formatPeakRateWindow(plan, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 }
 
 function selectPlan(plan: SubscriptionPlan) {
-  void plan
-  window.open(SUBSCRIPTION_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
-}
-
-function openTopUpPackageShop() {
-  window.open(TOPUP_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
+  selectedPlan.value = plan
+  errorMessage.value = ''
 }
 
 function selectPlanFromModal(plan: SubscriptionPlan) {
-  void plan
-  window.open(SUBSCRIPTION_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
+  showRenewalModal.value = false
+  renewGroupId.value = null
+  selectedPlan.value = plan
+  errorMessage.value = ''
 }
 
 function closeRenewalModal() {

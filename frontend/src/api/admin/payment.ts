@@ -49,11 +49,12 @@ export interface UpdatePaymentConfigRequest {
   help_text?: string
 }
 
-export interface CommercialRelayPresetApplyResult {
-  created_groups: number
-  updated_groups: number
-  created_plans: number
-  updated_plans: number
+export interface RefundResult {
+  success: boolean
+  warning?: string
+  require_force?: boolean
+  balance_deducted?: number
+  subscription_days_deducted?: number
 }
 
 export const adminPaymentAPI = {
@@ -112,7 +113,12 @@ export const adminPaymentAPI = {
 
   /** Process a refund */
   refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean }) {
-    return apiClient.post(`/admin/payment/orders/${id}/refund`, data)
+    return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund`, data)
+  },
+
+  /** Query and finalize a pending refund */
+  queryRefund(id: number) {
+    return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund/query`)
   },
 
   // ==================== Channels ====================
@@ -147,11 +153,6 @@ export const adminPaymentAPI = {
   /** Create a subscription plan */
   createPlan(data: Record<string, unknown>) {
     return apiClient.post<SubscriptionPlan>('/admin/payment/plans', data)
-  },
-
-  /** Apply the starter commercial relay preset */
-  applyCommercialRelayPreset() {
-    return apiClient.post<CommercialRelayPresetApplyResult>('/admin/payment/plans/presets/commercial-relay')
   },
 
   /** Update a subscription plan */

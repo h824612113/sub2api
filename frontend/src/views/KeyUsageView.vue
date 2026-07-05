@@ -5,7 +5,7 @@
       <nav class="mx-auto flex max-w-6xl items-center justify-between">
         <router-link to="/home" class="flex items-center gap-3">
           <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
-            <img :src="siteLogo || DEFAULT_SITE_LOGO" alt="Logo" class="h-full w-full object-contain" />
+            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
           <span class="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">{{ siteName }}</span>
         </router-link>
@@ -422,16 +422,15 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { DEFAULT_SITE_LOGO } from '@/constants/branding'
-import { formatBillingDisplayUSD, scaleBillingDisplayValue } from '@/utils/billingDisplay'
+import { buildGatewayUrl } from '@/api/client'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
 
 // ==================== Site Settings (same as HomeView) ====================
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'CyberHZ Relay')
-const siteLogo = computed(() => appStore.siteLogo || DEFAULT_SITE_LOGO)
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
@@ -635,7 +634,6 @@ const ringItems = computed<RingItem[]>(() => {
   } else {
     if (data.subscription) {
       const sub = data.subscription
-      const rateMultiplier = getSubscriptionRateMultiplier(data)
       const limits = [
         { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
         { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
@@ -644,12 +642,7 @@ const ringItems = computed<RingItem[]>(() => {
       for (const l of limits) {
         if (l.limit != null && l.limit > 0) {
           const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
-          items.push({
-            title: l.label,
-            pct,
-            amount: `${subscriptionUsd(l.usage, rateMultiplier)} / ${subscriptionUsd(l.limit, rateMultiplier)}`,
-            iconType: 'calendar',
-          })
+          items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
         }
       }
     }
@@ -739,32 +732,25 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
-      const rateMultiplier = getSubscriptionRateMultiplier(data)
       if (sub.daily_limit_usd > 0) {
         const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`,
-          value: `${subscriptionUsd(sub.daily_usage_usd, rateMultiplier)} / ${subscriptionUsd(sub.daily_limit_usd, rateMultiplier)}`,
-          valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
         })
       }
       if (sub.weekly_limit_usd > 0) {
         const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
         rows.push({
           iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`,
-          value: `${subscriptionUsd(sub.weekly_usage_usd, rateMultiplier)} / ${subscriptionUsd(sub.weekly_limit_usd, rateMultiplier)}`,
-          valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
         })
       }
       if (sub.monthly_limit_usd > 0) {
         const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
         rows.push({
           iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`,
-          value: `${subscriptionUsd(sub.monthly_usage_usd, rateMultiplier)} / ${subscriptionUsd(sub.monthly_limit_usd, rateMultiplier)}`,
-          valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
         })
       }
       if (sub.expires_at) {
@@ -775,15 +761,12 @@ const detailRows = computed<DetailRow[]>(() => {
       }
     }
 
-    const scaledRemaining = scaleBillingDisplayValue(data.remaining, getSubscriptionRateMultiplier(data))
-    const remainColor = scaledRemaining != null
-      ? (scaledRemaining <= 0 ? 'text-rose-500' : scaledRemaining < 10 ? 'text-amber-500' : 'text-emerald-500')
+    const remainColor = data.remaining != null
+      ? (data.remaining <= 0 ? 'text-rose-500' : data.remaining < 10 ? 'text-amber-500' : 'text-emerald-500')
       : ''
     rows.push({
       iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_SHIELD,
-      label: t('keyUsage.remainingQuota'),
-      value: data.remaining != null ? subscriptionUsd(data.remaining, getSubscriptionRateMultiplier(data)) : '-',
-      valueClass: remainColor,
+      label: t('keyUsage.remainingQuota'), value: data.remaining != null ? usd(data.remaining) : '-', valueClass: remainColor,
     })
   }
 
@@ -850,16 +833,6 @@ function usd(value: number | null | undefined): string {
   return '$' + Number(value).toFixed(2)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getSubscriptionRateMultiplier(data: any): number | null {
-  return data?.subscription?.rate_multiplier ?? data?.rate_multiplier ?? null
-}
-
-function subscriptionUsd(value: number | null | undefined, rateMultiplier?: number | null): string {
-  const formatted = formatBillingDisplayUSD(value, rateMultiplier)
-  return formatted === '-' ? formatted : '$' + formatted
-}
-
 function fmtNum(val: number | null | undefined): string {
   if (val == null) return '-'
   return val.toLocaleString()
@@ -884,7 +857,7 @@ function getBrowserTimezone(): string {
 
 async function fetchUsage(key: string) {
   const dateParams = getDateParams()
-  const url = '/v1/usage' + (dateParams ? '?' + dateParams : '')
+  const url = buildGatewayUrl('/v1/usage') + (dateParams ? '?' + dateParams : '')
   const res = await fetch(url, {
     headers: { 'Authorization': 'Bearer ' + key },
   })
