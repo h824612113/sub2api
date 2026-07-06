@@ -73,7 +73,7 @@
               <button
                 v-if="subscription.status === 'active'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
-                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+                @click="goToSubscriptionCardShop"
               >
                 {{ t('payment.renewNow') }}
               </button>
@@ -250,7 +250,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
@@ -261,6 +260,7 @@ import { formatBillingDisplayUSD } from '@/utils/billingDisplay'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts } from '@/utils/subscriptionQuota'
+import { redirectToExternalUrl } from '@/utils/externalNavigation'
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
@@ -273,8 +273,8 @@ function platformAccentDotClass(p: string): string {
 }
 
 const { t } = useI18n()
-const router = useRouter()
 const appStore = useAppStore()
+const SUBSCRIPTION_CARD_SHOP_URL = 'https://pay.ldxp.cn/shop/7HOK84LL'
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
@@ -285,6 +285,10 @@ function subscriptionHasPeakRate(subscription: UserSubscription): boolean {
 
 function subscriptionPeakRateLabel(subscription: UserSubscription): string {
   return formatPeakRateWindow(subscription.group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
+}
+
+function goToSubscriptionCardShop() {
+  redirectToExternalUrl(SUBSCRIPTION_CARD_SHOP_URL)
 }
 
 async function loadSubscriptions() {

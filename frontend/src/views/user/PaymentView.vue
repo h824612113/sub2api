@@ -328,6 +328,7 @@ import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
+import { redirectToExternalUrl } from '@/utils/externalNavigation'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
 
@@ -834,6 +835,10 @@ function openTopUpPackageShop() {
   window.open(TOPUP_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
 }
 
+function redirectToTopUpPackageShop() {
+  redirectToExternalUrl(TOPUP_CARD_SHOP_URL)
+}
+
 function closeRenewalModal() {
   showRenewalModal.value = false
   renewGroupId.value = null
@@ -1224,14 +1229,8 @@ onMounted(async () => {
     if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
       if (route.query.group) {
-        const groupId = Number(route.query.group)
-        const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)
-        if (groupPlans.length === 1) {
-          selectedPlan.value = groupPlans[0]
-        } else if (groupPlans.length > 1) {
-          renewGroupId.value = groupId
-          showRenewalModal.value = true
-        }
+        redirectToTopUpPackageShop()
+        return
       }
     }
   } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
-import { formatPaymentAmount } from '@/components/payment/currency'
 import type { CheckoutInfoResponse, MethodLimit, SubscriptionPlan } from '@/types/payment'
 
 const routeState = vi.hoisted(() => ({
@@ -21,6 +20,11 @@ const showInfo = vi.hoisted(() => vi.fn())
 const showWarning = vi.hoisted(() => vi.fn())
 const getCheckoutInfo = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
+const redirectToExternalUrl = vi.hoisted(() => vi.fn())
+
+vi.mock('@/utils/externalNavigation', () => ({
+  redirectToExternalUrl,
+}))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -216,6 +220,7 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
   showWarning.mockReset()
   getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoWithPlansFixture(options))
   bridgeInvoke.mockReset()
+  redirectToExternalUrl.mockReset()
   window.localStorage.clear()
   ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
 
@@ -235,9 +240,9 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
   return wrapper
 }
 
-describe('PaymentView subscription confirmation amounts', () => {
-  it('keeps subscription plan price independent from balance recharge multiplier', async () => {
-    const wrapper = await mountSubscriptionConfirm({
+describe('PaymentView subscription card shop redirects', () => {
+  it('redirects legacy renewal query links to the card shop', async () => {
+    await mountSubscriptionConfirm({
       checkout: {
         balance_recharge_multiplier: 4,
       },
@@ -250,73 +255,10 @@ describe('PaymentView subscription confirmation amounts', () => {
       },
     })
 
-    const text = wrapper.text()
-    const planPrice = formatPaymentAmount(200, 'CNY')
-    const originalPrice = formatPaymentAmount(300, 'CNY')
-    const convertedByRechargeMultiplier = formatPaymentAmount(50, 'CNY')
-
-    expect(text).toContain(planPrice)
-    expect(text).toContain(originalPrice)
-    expect(text).not.toContain(convertedByRechargeMultiplier)
-    expect(wrapper.findAll('button').some(button => button.text().includes(planPrice))).toBe(true)
-  })
-
-  it('keeps plan price when multiplier is not configured or payment currency is not CNY', async () => {
-    const cnyWrapper = await mountSubscriptionConfirm({
-      checkout: {
-        balance_recharge_multiplier: 0,
-      },
-      method: {
-        currency: 'CNY',
-      },
-      plan: {
-        price: 7.99,
-      },
-    })
-
-    expect(cnyWrapper.text()).toContain(formatPaymentAmount(7.99, 'CNY'))
-    expect(cnyWrapper.text()).not.toContain(formatPaymentAmount(57.07, 'CNY'))
-
-    const usdWrapper = await mountSubscriptionConfirm({
-      checkout: {
-        balance_recharge_multiplier: 0.14,
-      },
-      method: {
-        currency: 'USD',
-      },
-      plan: {
-        price: 7.99,
-        original_price: 9.99,
-      },
-    })
-
-    expect(usdWrapper.text()).toContain(formatPaymentAmount(7.99, 'USD'))
-    expect(usdWrapper.text()).toContain(formatPaymentAmount(9.99, 'USD'))
-  })
-
-  it('adds fee rate to the direct subscription plan price to match backend pay_amount', async () => {
-    const wrapper = await mountSubscriptionConfirm({
-      checkout: {
-        balance_recharge_multiplier: 4,
-        recharge_fee_rate: 2.5,
-      },
-      method: {
-        currency: 'CNY',
-      },
-      plan: {
-        price: 7.99,
-      },
-    })
-
-    const text = wrapper.text()
-    const price = formatPaymentAmount(7.99, 'CNY')
-    const fee = formatPaymentAmount(0.20, 'CNY')
-    const total = formatPaymentAmount(8.19, 'CNY')
-
-    expect(text).toContain(price)
-    expect(text).toContain(fee)
-    expect(text).toContain(total)
-    expect(wrapper.findAll('button').some(button => button.text().includes(total))).toBe(true)
+    expect(redirectToExternalUrl).toHaveBeenCalledWith(
+      'https://pay.ldxp.cn/shop/7HOK84LL',
+    )
+    expect(createOrder).not.toHaveBeenCalled()
   })
 })
 
