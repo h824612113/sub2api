@@ -37,6 +37,48 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
+            <div class="card p-5">
+              <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-[0.18em] text-primary-500">Balance Packs</p>
+                  <h3 class="mt-1 text-lg font-bold text-gray-900 dark:text-white">补量包</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">购买后使用兑换码直接充值到账户余额</p>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500">适合订阅额度不够时临时补量</p>
+              </div>
+              <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div
+                  v-for="pkg in topUpPackages"
+                  :key="pkg.balance"
+                  class="group rounded-2xl border border-gray-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-lg dark:border-dark-700 dark:bg-dark-800"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-medium text-primary-500">{{ pkg.tag }}</p>
+                      <h4 class="mt-1 text-base font-bold text-gray-900 dark:text-white">{{ pkg.name }}</h4>
+                    </div>
+                    <span class="rounded-full bg-primary-50 px-2 py-1 text-[11px] font-medium text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
+                      余额直充
+                    </span>
+                  </div>
+                  <div class="mt-4">
+                    <div class="flex items-baseline gap-1">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">¥</span>
+                      <span class="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">{{ pkg.price }}</span>
+                    </div>
+                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">到账 USD {{ pkg.balance }}</p>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ pkg.note }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="mt-4 w-full rounded-xl bg-primary-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:scale-[0.98]"
+                    @click="openTopUpPackageShop"
+                  >
+                    去补给
+                  </button>
+                </div>
+              </div>
+            </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -297,6 +339,22 @@ const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
+const TOPUP_CARD_SHOP_URL = 'https://pay.ldxp.cn/shop/7HOK84LL'
+
+interface TopUpPackage {
+  name: string
+  balance: number
+  price: string
+  tag: string
+  note: string
+}
+
+const topUpPackages: TopUpPackage[] = [
+  { name: '补量包 100 刀', balance: 100, price: '24.99', tag: 'Starter', note: '适合轻量补充额度' },
+  { name: '补量包 300 刀', balance: 300, price: '74.99', tag: 'Popular', note: '适合常规加量使用' },
+  { name: '补量包 500 刀', balance: 500, price: '119.99', tag: 'Value', note: '适合高频补量需求' },
+  { name: '补量包 1000 刀', balance: 1000, price: '229.99', tag: 'Max', note: '适合大额备用额度' },
+]
 
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
@@ -768,6 +826,10 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   renewGroupId.value = null
   selectedPlan.value = plan
   errorMessage.value = ''
+}
+
+function openTopUpPackageShop() {
+  window.open(TOPUP_CARD_SHOP_URL, '_blank', 'noopener,noreferrer')
 }
 
 function closeRenewalModal() {
