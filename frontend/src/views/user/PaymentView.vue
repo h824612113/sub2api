@@ -817,15 +817,17 @@ function planPeakRateLabel(plan: SubscriptionPlan): string {
 }
 
 function selectPlan(plan: SubscriptionPlan) {
-  selectedPlan.value = plan
+  void plan
   errorMessage.value = ''
+  openTopUpPackageShop()
 }
 
 function selectPlanFromModal(plan: SubscriptionPlan) {
+  void plan
   showRenewalModal.value = false
   renewGroupId.value = null
-  selectedPlan.value = plan
   errorMessage.value = ''
+  openTopUpPackageShop()
 }
 
 function openTopUpPackageShop() {
