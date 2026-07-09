@@ -109,6 +109,7 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     plans: [],
     balance_disabled: false,
     balance_recharge_multiplier: 1,
+    subscription_usd_to_cny_rate: 0,
     recharge_fee_rate: 0,
     help_text: '',
     help_image_url: '',
@@ -244,14 +245,15 @@ describe('PaymentView subscription card shop redirects', () => {
   it('redirects legacy renewal query links to the card shop', async () => {
     await mountSubscriptionConfirm({
       checkout: {
-        balance_recharge_multiplier: 4,
+        balance_recharge_multiplier: 0.14,
+        subscription_usd_to_cny_rate: 7.15,
       },
       method: {
         currency: 'CNY',
       },
       plan: {
-        price: 200,
-        original_price: 300,
+        price: 9.99,
+        original_price: 12.99,
       },
     })
 
@@ -259,6 +261,88 @@ describe('PaymentView subscription card shop redirects', () => {
       'https://pay.ldxp.cn/shop/7HOK84LL',
     )
     expect(createOrder).not.toHaveBeenCalled()
+  })
+})
+
+describe('PaymentView payment recovery', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+    ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
+  })
+
+  it('restores a custom EasyPay method as the selected payment method', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      methods: {
+        wxpay: checkoutInfoFixture().data.methods.wxpay,
+        ldc: {
+          daily_limit: 0,
+          daily_used: 0,
+          daily_remaining: 0,
+          single_min: 0,
+          single_max: 0,
+          fee_rate: 0,
+          available: true,
+          display_name: 'LDC Pay',
+        },
+      },
+    }))
+    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
+      orderId: 888,
+      amount: 66,
+      qrCode: 'ldc-qr',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'ldc',
+      payUrl: 'https://pay.example.com/ldc',
+      outTradeNo: 'sub2_ldc_888',
+      clientSecret: '',
+      intentId: '',
+      currency: '',
+      countryCode: '',
+      paymentEnv: '',
+      payAmount: 66,
+      orderType: 'balance',
+      paymentMode: 'popup',
+      resumeToken: '',
+      createdAt: Date.now(),
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          PaymentStatusPanel: {
+            template: '<button data-test="payment-done" @click="$emit(\'done\')" />',
+          },
+          PaymentMethodSelector: {
+            props: ['selected'],
+            template: '<div data-test="method-selector">{{ selected }}</div>',
+          },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+    await wrapper.find('[data-test="payment-done"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="method-selector"]').text()).toBe('ldc')
   })
 })
 
