@@ -88,11 +88,11 @@ WHERE id IN (5,7,8,13,28,29,30,31,34,41);
 UPDATE subscription_plans
 SET
   features = CASE id
-    WHEN 1 THEN '每周 USD 500 使用额度' || E'\n' || '每月总额度 USD 2000' || E'\n' || '支持最新 GPT-5.5 / 5.4 等 Codex 模型' || E'\n' || 'Pro 优先级通道'
-    WHEN 2 THEN '每周 USD 300 使用额度' || E'\n' || '每月总额度 USD 1200' || E'\n' || '支持最新 GPT-5.5 / 5.4 等 Codex 模型' || E'\n' || 'Plus 优先级通道'
-    WHEN 3 THEN '每周 USD 150 使用额度' || E'\n' || '每月总额度 USD 600' || E'\n' || '支持最新 GPT-5.5 / 5.4 等 Codex 模型' || E'\n' || 'Basic 优先级通道'
-    WHEN 4 THEN '每周 USD 1000 使用额度' || E'\n' || '每月总额度 USD 4000' || E'\n' || '支持最新 GPT-5.5 / 5.4 等 Codex 模型' || E'\n' || 'Max 优先级通道'
-    WHEN 5 THEN '每周 USD 2000 使用额度' || E'\n' || '每月总额度 USD 8000' || E'\n' || '支持最新 GPT-5.5 / 5.4 等 Codex 模型' || E'\n' || 'Ultra 优先级通道'
+    WHEN 1 THEN '每周 USD 500 使用额度' || E'\n' || '每月总额度 USD 2000' || E'\n' || '支持最新 GPT-5.6/ 5.5 等 Codex 模型' || E'\n' || 'Pro 优先级通道'
+    WHEN 2 THEN '每周 USD 300 使用额度' || E'\n' || '每月总额度 USD 1200' || E'\n' || '支持最新 GPT-5.6/ 5.5 等 Codex 模型' || E'\n' || 'Plus 优先级通道'
+    WHEN 3 THEN '每周 USD 150 使用额度' || E'\n' || '每月总额度 USD 600' || E'\n' || '支持最新 GPT-5.6/ 5.5 等 Codex 模型' || E'\n' || 'Basic 优先级通道'
+    WHEN 4 THEN '每周 USD 1000 使用额度' || E'\n' || '每月总额度 USD 4000' || E'\n' || '支持最新 GPT-5.6/ 5.5 等 Codex 模型' || E'\n' || 'Max 优先级通道'
+    WHEN 5 THEN '每周 USD 2000 使用额度' || E'\n' || '每月总额度 USD 8000' || E'\n' || '支持最新 GPT-5.6/ 5.5 等 Codex 模型' || E'\n' || 'Ultra 优先级通道'
     ELSE features
   END,
   updated_at = now()
