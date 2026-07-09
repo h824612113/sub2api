@@ -30,6 +30,14 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+.tools/
+*.png
+*.PNG
+*.jpg
+*.jpeg
+*.webp
+*.gif
+!assets/**
 
 # Node modules (will be installed in container)
 frontend/node_modules/
