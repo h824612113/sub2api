@@ -546,28 +546,48 @@ func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input 
 		Statuses:      make(map[int64]string),
 	}
 
+	groupIDs, err := s.resolveSubscriptionBundleGroupIDs(ctx, input.GroupID)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, userID := range input.UserIDs {
-		sub, reused, err := s.assignSubscriptionWithReuse(ctx, &AssignSubscriptionInput{
-			UserID:       userID,
-			GroupID:      input.GroupID,
-			ValidityDays: input.ValidityDays,
-			AssignedBy:   input.AssignedBy,
-			Notes:        input.Notes,
-		})
-		if err != nil {
-			result.FailedCount++
-			result.Errors = append(result.Errors, fmt.Sprintf("user %d: %v", userID, err))
-			result.Statuses[userID] = "failed"
-		} else {
-			result.SuccessCount++
-			result.Subscriptions = append(result.Subscriptions, *sub)
-			if reused {
-				result.ReusedCount++
-				result.Statuses[userID] = "reused"
-			} else {
-				result.CreatedCount++
-				result.Statuses[userID] = "created"
+		userSubs := make([]UserSubscription, 0, len(groupIDs))
+		allReused := true
+		var assignErr error
+		for _, groupID := range groupIDs {
+			sub, reused, err := s.assignSubscriptionWithReuse(ctx, &AssignSubscriptionInput{
+				UserID:       userID,
+				GroupID:      groupID,
+				ValidityDays: input.ValidityDays,
+				AssignedBy:   input.AssignedBy,
+				Notes:        input.Notes,
+			})
+			if err != nil {
+				assignErr = err
+				break
 			}
+			if sub != nil {
+				userSubs = append(userSubs, *sub)
+			}
+			if !reused {
+				allReused = false
+			}
+		}
+		if assignErr != nil {
+			result.FailedCount++
+			result.Errors = append(result.Errors, fmt.Sprintf("user %d: %v", userID, assignErr))
+			result.Statuses[userID] = "failed"
+			continue
+		}
+		result.SuccessCount++
+		result.Subscriptions = append(result.Subscriptions, userSubs...)
+		if allReused {
+			result.ReusedCount++
+			result.Statuses[userID] = "reused"
+		} else {
+			result.CreatedCount++
+			result.Statuses[userID] = "created"
 		}
 	}
 

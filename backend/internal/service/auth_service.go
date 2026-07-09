@@ -81,6 +81,10 @@ type DefaultSubscriptionAssigner interface {
 	AssignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error)
 }
 
+type bundledDefaultSubscriptionAssigner interface {
+	AssignOrExtendSubscriptionBundle(ctx context.Context, input *AssignSubscriptionInput) ([]UserSubscription, error)
+}
+
 type signupGrantPlan struct {
 	Balance        float64
 	Concurrency    int
@@ -790,12 +794,19 @@ func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, ite
 		return
 	}
 	for _, item := range items {
-		if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		input := &AssignSubscriptionInput{
 			UserID:       userID,
 			GroupID:      item.GroupID,
 			ValidityDays: item.ValidityDays,
 			Notes:        notes,
-		}); err != nil {
+		}
+		if assigner, ok := s.defaultSubAssigner.(bundledDefaultSubscriptionAssigner); ok {
+			if _, err := assigner.AssignOrExtendSubscriptionBundle(ctx, input); err != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription bundle: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
+			}
+			continue
+		}
+		if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, input); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 		}
 	}

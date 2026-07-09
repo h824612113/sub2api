@@ -89,12 +89,19 @@ ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`,
 	}
 	if s.defaultSubAssigner != nil {
 		for _, item := range providerDefaults.Subscriptions {
-			if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+			input := &AssignSubscriptionInput{
 				UserID:       userID,
 				GroupID:      item.GroupID,
 				ValidityDays: item.ValidityDays,
 				Notes:        "auto assigned by first bind defaults",
-			}); err != nil {
+			}
+			if assigner, ok := s.defaultSubAssigner.(bundledDefaultSubscriptionAssigner); ok {
+				if _, err := assigner.AssignOrExtendSubscriptionBundle(ctx, input); err != nil {
+					return fmt.Errorf("apply first bind subscription default bundle: %w", err)
+				}
+				continue
+			}
+			if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, input); err != nil {
 				return fmt.Errorf("apply first bind subscription default: %w", err)
 			}
 		}
