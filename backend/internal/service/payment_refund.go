@@ -492,10 +492,19 @@ func (s *PaymentService) applyRefundFinalDeduction(ctx context.Context, p *Refun
 			return fmt.Errorf("deduction: %w", err)
 		}
 	}
-	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, -p.SubDaysToDeduct); err != nil {
-			if errors.Is(err, ErrAdjustWouldExpire) {
-				if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
+	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 {
+		subscriptionIDs := p.SubscriptionIDs
+		if len(subscriptionIDs) == 0 && p.SubscriptionID > 0 {
+			subscriptionIDs = []int64{p.SubscriptionID}
+		}
+		for _, subscriptionID := range subscriptionIDs {
+			if subscriptionID <= 0 {
+				continue
+			}
+			if _, err := s.subscriptionSvc.ExtendSubscription(ctx, subscriptionID, -p.SubDaysToDeduct); err == nil {
+				continue
+			} else if errors.Is(err, ErrAdjustWouldExpire) {
+				if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, subscriptionID); revokeErr != nil {
 					return fmt.Errorf("revoke subscription: %w", revokeErr)
 				}
 			} else {

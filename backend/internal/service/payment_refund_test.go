@@ -417,6 +417,36 @@ func TestQueryAndFinalizeRefundUnsupportedProviderReturnsClearError(t *testing.T
 	require.Equal(t, "REFUND_QUERY_UNSUPPORTED", infraerrors.Reason(err))
 }
 
+func TestApplyRefundFinalDeductionDeductsAllBundleSubscriptions(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	repo := newSubscriptionUserSubRepoStub()
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).Truncate(time.Second)
+	repo.seed(&UserSubscription{ID: 101, UserID: 7, GroupID: 5, Status: SubscriptionStatusActive, ExpiresAt: expiresAt})
+	repo.seed(&UserSubscription{ID: 102, UserID: 7, GroupID: 30, Status: SubscriptionStatusActive, ExpiresAt: expiresAt})
+
+	svc := &PaymentService{
+		entClient:       client,
+		subscriptionSvc: NewSubscriptionService(nil, repo, nil, nil, nil),
+	}
+	plan := &RefundPlan{
+		OrderID:         999,
+		Order:           &dbent.PaymentOrder{UserID: 7},
+		DeductionType:   payment.DeductionTypeSubscription,
+		SubDaysToDeduct: 3,
+		SubscriptionID:  101,
+		SubscriptionIDs: []int64{101, 102},
+	}
+
+	require.NoError(t, svc.applyRefundFinalDeduction(ctx, plan))
+	primary, err := repo.GetByID(ctx, 101)
+	require.NoError(t, err)
+	sibling, err := repo.GetByID(ctx, 102)
+	require.NoError(t, err)
+	require.Equal(t, expiresAt.AddDate(0, 0, -3), primary.ExpiresAt)
+	require.Equal(t, expiresAt.AddDate(0, 0, -3), sibling.ExpiresAt)
+}
+
 func createPendingRefundOrderForTest(t *testing.T, ctx context.Context, client *dbent.Client, suffix string) *dbent.PaymentOrder {
 	t.Helper()
 

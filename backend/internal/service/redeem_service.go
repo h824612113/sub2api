@@ -556,24 +556,33 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 		if s.authCacheInvalidator != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 		}
+		if redeemCode.GroupID == nil {
+			return
+		}
+
+		groupIDs := []int64{*redeemCode.GroupID}
+		if s.subscriptionService != nil {
+			if bundleIDs, err := s.subscriptionService.ResolveSubscriptionBundleGroupIDs(ctx, *redeemCode.GroupID); err == nil && len(bundleIDs) > 0 {
+				groupIDs = bundleIDs
+			}
+			for _, groupID := range groupIDs {
+				if err := s.subscriptionService.invalidateSubscriptionCaches(userID, groupID); err != nil {
+					logger.LegacyPrintf("service.redeem", "invalidate subscription caches after redeem failed user=%d group=%d: %v", userID, groupID, err)
+				}
+			}
+			return
+		}
+
 		if s.billingCacheService == nil {
 			return
 		}
-		if redeemCode.GroupID != nil {
-			groupIDs := []int64{*redeemCode.GroupID}
-			if s.subscriptionService != nil {
-				if bundleIDs, err := s.subscriptionService.ResolveSubscriptionBundleGroupIDs(ctx, *redeemCode.GroupID); err == nil && len(bundleIDs) > 0 {
-					groupIDs = bundleIDs
-				}
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			for _, groupID := range groupIDs {
+				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
 			}
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				for _, groupID := range groupIDs {
-					_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-				}
-			}()
-		}
+		}()
 	}
 }
 
