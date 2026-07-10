@@ -120,7 +120,7 @@ func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *test
 	cache := &snapshotHydrationCache{
 		accounts: map[int64]*Account{},
 	}
-	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, stubOpenAIAccountRepo{}, nil, nil)
+	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, &stubOpenAIAccountRepo{}, nil, nil)
 	svc := &OpenAIGatewayService{
 		schedulerSnapshot: schedulerSnapshot,
 	}
