@@ -18,6 +18,7 @@ This directory contains files for deploying Sub2API on Linux servers.
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
 | `.env.example` | Docker environment variables template |
 | `DOCKER.md` | Docker Hub documentation |
+| [`UPSTREAM_MERGE_DEPLOY_RUNBOOK_CN.md`](UPSTREAM_MERGE_DEPLOY_RUNBOOK_CN.md) | 商业版本合并上游、验证、备份、部署与回滚手册 |
 | `install.sh` | One-click binary installation script |
 | `install-datamanagementd.sh` | datamanagementd 一键安装脚本 |
 | `sub2api.service` | Systemd service unit file |

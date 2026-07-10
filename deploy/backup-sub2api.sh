@@ -57,7 +57,11 @@ docker compose -f "${DEPLOY_DIR}/docker-compose.yml" config > "${tmp_dir}/docker
 
 docker run --rm -i postgres:18-alpine pg_restore -l > /dev/null < "${tmp_dir}/sub2api.dump"
 
-sha256sum "${tmp_dir}"/* > "${tmp_dir}/SHA256SUMS"
+(
+  cd "${tmp_dir}"
+  sha256sum deploy-config.tgz docker-compose-rendered.yml docker-inspect.json \
+    globals.sql sub2api.dump table-counts.txt > SHA256SUMS
+)
 mv "${tmp_dir}" "${backup_dir}"
 trap - EXIT
 
