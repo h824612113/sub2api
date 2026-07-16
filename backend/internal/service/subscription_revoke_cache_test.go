@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -169,4 +170,102 @@ func TestRestoreSubscription_LiveSubscriptionConflict(t *testing.T) {
 	_, err := svc.RestoreSubscription(context.Background(), 1)
 	require.ErrorIs(t, err, ErrSubscriptionRestoreConflict)
 	require.Zero(t, repo.restoreCalls)
+}
+
+type bundleRestoreUserSubRepoStub struct {
+	userSubRepoNoop
+	subs        map[int64]*UserSubscription
+	restoredIDs []int64
+}
+
+func (r *bundleRestoreUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
+	sub := r.subs[id]
+	if sub == nil || sub.DeletedAt != nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	cp := *sub
+	return &cp, nil
+}
+
+func (r *bundleRestoreUserSubRepoStub) GetByIDIncludeDeleted(_ context.Context, id int64) (*UserSubscription, error) {
+	sub := r.subs[id]
+	if sub == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	cp := *sub
+	return &cp, nil
+}
+
+func (r *bundleRestoreUserSubRepoStub) ExistsActiveByUserIDAndGroupID(_ context.Context, userID, groupID int64) (bool, error) {
+	for _, sub := range r.subs {
+		if sub.UserID == userID && sub.GroupID == groupID && sub.DeletedAt == nil {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *bundleRestoreUserSubRepoStub) Restore(_ context.Context, id int64, restoredStatus string) (*UserSubscription, error) {
+	sub := r.subs[id]
+	if sub == nil || sub.DeletedAt == nil {
+		return nil, ErrSubscriptionNotRevoked
+	}
+	sub.Status = restoredStatus
+	sub.DeletedAt = nil
+	r.restoredIDs = append(r.restoredIDs, id)
+	cp := *sub
+	return &cp, nil
+}
+
+func (r *bundleRestoreUserSubRepoStub) List(
+	_ context.Context,
+	_ pagination.PaginationParams,
+	userID, groupID *int64,
+	status, _, _, _ string,
+) ([]UserSubscription, *pagination.PaginationResult, error) {
+	items := make([]UserSubscription, 0)
+	for _, sub := range r.subs {
+		if userID != nil && sub.UserID != *userID {
+			continue
+		}
+		if groupID != nil && sub.GroupID != *groupID {
+			continue
+		}
+		if status == SubscriptionStatusRevoked && sub.DeletedAt == nil {
+			continue
+		}
+		cp := *sub
+		if cp.DeletedAt != nil {
+			cp.Status = SubscriptionStatusRevoked
+		}
+		items = append(items, cp)
+	}
+	return items, &pagination.PaginationResult{Total: int64(len(items))}, nil
+}
+
+func TestRestoreSubscriptionBundleRestoresMatchingRevokedSiblings(t *testing.T) {
+	now := time.Now().UTC()
+	selectedDeletedAt := now.Add(-time.Minute)
+	siblingDeletedAt := selectedDeletedAt.Add(2 * time.Second)
+	oldDeletedAt := selectedDeletedAt.Add(-24 * time.Hour)
+	repo := &bundleRestoreUserSubRepoStub{subs: map[int64]*UserSubscription{
+		201: {ID: 201, UserID: 8001, GroupID: 5, Status: SubscriptionStatusActive, ExpiresAt: now.Add(30 * 24 * time.Hour), DeletedAt: &selectedDeletedAt},
+		202: {ID: 202, UserID: 8001, GroupID: 30, Status: SubscriptionStatusActive, ExpiresAt: now.Add(30 * 24 * time.Hour), DeletedAt: &siblingDeletedAt},
+		199: {ID: 199, UserID: 8001, GroupID: 30, Status: SubscriptionStatusExpired, ExpiresAt: now.Add(-24 * time.Hour), DeletedAt: &oldDeletedAt},
+	}}
+	groupRepo := &subscriptionGroupRepoByIDStub{groups: map[int64]*Group{
+		5:  {ID: 5, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+		30: {ID: 30, SubscriptionType: SubscriptionTypeSubscription, Status: StatusActive, Description: "subscription_bundle_groups=5,30"},
+	}}
+	svc := NewSubscriptionService(groupRepo, repo, nil, nil, nil)
+	t.Cleanup(svc.Stop)
+
+	restored, err := svc.RestoreSubscriptionBundle(context.Background(), 201)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(201), restored.ID)
+	require.ElementsMatch(t, []int64{201, 202}, repo.restoredIDs)
+	require.Nil(t, repo.subs[201].DeletedAt)
+	require.Nil(t, repo.subs[202].DeletedAt)
+	require.NotNil(t, repo.subs[199].DeletedAt, "an older revoked subscription must not be restored")
 }

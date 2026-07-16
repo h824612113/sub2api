@@ -644,7 +644,7 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 	}
 	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && len(p.SubscriptionIDs) > 0 {
 		for _, subID := range p.SubscriptionIDs {
-			if _, err := s.subscriptionSvc.ExtendSubscription(ctx, subID, p.SubDaysToDeduct); err != nil {
+			if err := s.rollbackSubscriptionDeduction(ctx, subID, p.SubDaysToDeduct); err != nil {
 				slog.Error("[CRITICAL] subscription rollback failed", "orderID", p.OrderID, "subID", subID, "days", p.SubDaysToDeduct, "error", err)
 				s.writeAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED", "admin", map[string]any{"gatewayError": psErrMsg(gErr), "rollbackError": psErrMsg(err), "subDaysDeducted": p.SubDaysToDeduct, "subscriptionID": subID})
 				return false
@@ -652,6 +652,20 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 		}
 	}
 	return true
+}
+
+func (s *PaymentService) rollbackSubscriptionDeduction(ctx context.Context, subscriptionID int64, days int) error {
+	if _, err := s.subscriptionSvc.ExtendSubscription(ctx, subscriptionID, days); err == nil {
+		return nil
+	} else if !errors.Is(err, ErrSubscriptionNotFound) {
+		return err
+	}
+
+	// A deduction that would expire the subscription is implemented as a soft
+	// delete without changing expires_at. Restoring that row is the full rollback;
+	// extending it as well would grant extra days.
+	_, err := s.subscriptionSvc.RestoreSubscription(ctx, subscriptionID)
+	return err
 }
 
 func (s *PaymentService) restoreStatus(ctx context.Context, p *RefundPlan) {

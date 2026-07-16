@@ -74,6 +74,7 @@ git log --oneline --decorate --max-count=12
 - 正数订阅兑换码会发放整个 bundle。
 - 负数兑换码会扣减整个 bundle，并同步清理订阅 L1 缓存。
 - 退款最终扣减会处理整个 bundle；退款失败回滚也必须恢复整个 bundle。
+- 后台撤销和恢复都会处理整个 bundle，不能只恢复主分组或候选分组中的一条。
 - 购买、续费、充值跳转仍使用站内预期入口，不能被上游路由覆盖。
 - 用户侧不能显示 `quota_pool_*`、`subscription_bundle_groups` 等内部配置行。
 
@@ -113,7 +114,7 @@ go test ./internal/service -run '^$' -count=1
 订阅共享额度、购买发放、兑换缓存和退款专项：
 
 ```bash
-go test ./internal/service -run 'Test(GroupQuotaPoolKey|AggregatePooledSubscriptionQuota|SubscriptionServiceList_NormalizesPooledDisplayPerUser|SubscriptionServiceValidateAndCheckLimits|BillingCacheServiceCheckSubscriptionEligibility|ExtendSubscriptionBundle|ExecuteSubscriptionFulfillment|RedeemService_InvalidateRedeemCaches_SubscriptionBundleL1AfterCommit|ApplyRefundFinalDeductionDeductsAllBundleSubscriptions)' -count=1
+go test -tags=unit ./internal/service -run 'Test(GroupQuotaPoolKey|AggregatePooledSubscriptionQuota|SubscriptionServiceList_NormalizesPooledDisplayPerUser|SubscriptionServiceValidateAndCheckLimits|BillingCacheServiceCheckSubscriptionEligibility|ExtendSubscriptionBundle|RestoreSubscriptionBundleRestoresMatchingRevokedSiblings|ExecuteSubscriptionFulfillment|RedeemService_InvalidateRedeemCaches_SubscriptionBundleL1AfterCommit|ApplyRefundFinalDeductionDeductsAllBundleSubscriptions|RollbackRefundRestoresRevokedBundleSubscriptionsWithoutExtending)' -count=1
 cd ..
 ```
 

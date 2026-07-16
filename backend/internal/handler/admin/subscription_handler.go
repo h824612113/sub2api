@@ -272,7 +272,7 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Subscription revoked successfully"})
 }
 
-// Restore handles restoring a revoked subscription.
+// Restore handles restoring a revoked subscription bundle.
 // POST /api/v1/admin/subscriptions/:id/restore
 func (h *SubscriptionHandler) Restore(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -281,7 +281,7 @@ func (h *SubscriptionHandler) Restore(c *gin.Context) {
 		return
 	}
 
-	subscription, err := h.subscriptionService.RestoreSubscription(c.Request.Context(), subscriptionID)
+	subscription, err := h.subscriptionService.RestoreSubscriptionBundle(c.Request.Context(), subscriptionID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

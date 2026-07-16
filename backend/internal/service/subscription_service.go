@@ -24,21 +24,24 @@ var MaxExpiresAt = time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
 // MaxValidityDays is the maximum allowed validity days for subscriptions (100 years)
 const MaxValidityDays = 36500
 
+const subscriptionBundleRestoreMatchWindow = time.Minute
+
 var (
-	ErrSubscriptionNotFound        = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
-	ErrSubscriptionExpired         = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
-	ErrSubscriptionSuspended       = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
-	ErrSubscriptionAlreadyExists   = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
-	ErrSubscriptionAssignConflict  = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
-	ErrSubscriptionNotRevoked      = infraerrors.Conflict("SUBSCRIPTION_NOT_REVOKED", "subscription is not revoked")
-	ErrSubscriptionRestoreConflict = infraerrors.Conflict("SUBSCRIPTION_RESTORE_CONFLICT", "subscription already exists for this user and group")
-	ErrGroupNotSubscriptionType    = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
-	ErrInvalidInput                = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
-	ErrDailyLimitExceeded          = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
-	ErrWeeklyLimitExceeded         = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
-	ErrMonthlyLimitExceeded        = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
-	ErrSubscriptionNilInput        = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
-	ErrAdjustWouldExpire           = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
+	ErrSubscriptionNotFound         = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
+	ErrSubscriptionExpired          = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
+	ErrSubscriptionSuspended        = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
+	ErrSubscriptionAlreadyExists    = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
+	ErrSubscriptionAssignConflict   = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
+	ErrSubscriptionNotRevoked       = infraerrors.Conflict("SUBSCRIPTION_NOT_REVOKED", "subscription is not revoked")
+	ErrSubscriptionRestoreConflict  = infraerrors.Conflict("SUBSCRIPTION_RESTORE_CONFLICT", "subscription already exists for this user and group")
+	ErrSubscriptionBundleIncomplete = infraerrors.Conflict("SUBSCRIPTION_BUNDLE_RESTORE_INCOMPLETE", "matching revoked subscription bundle is incomplete")
+	ErrGroupNotSubscriptionType     = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
+	ErrInvalidInput                 = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
+	ErrDailyLimitExceeded           = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
+	ErrWeeklyLimitExceeded          = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
+	ErrMonthlyLimitExceeded         = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
+	ErrSubscriptionNilInput         = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
+	ErrAdjustWouldExpire            = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
 )
 
 // SubscriptionService 订阅服务
@@ -710,6 +713,10 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 
 // RestoreSubscription 恢复已撤销订阅
 func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscriptionID int64) (*UserSubscription, error) {
+	return s.restoreSubscription(ctx, subscriptionID, true)
+}
+
+func (s *SubscriptionService) restoreSubscription(ctx context.Context, subscriptionID int64, invalidateCache bool) (*UserSubscription, error) {
 	sub, err := s.userSubRepo.GetByIDIncludeDeleted(ctx, subscriptionID)
 	if err != nil {
 		return nil, err
@@ -737,10 +744,126 @@ func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscript
 		return nil, err
 	}
 
-	if err := s.invalidateSubscriptionCaches(restored.UserID, restored.GroupID); err != nil {
-		return nil, err
+	if invalidateCache {
+		if err := s.invalidateSubscriptionCaches(restored.UserID, restored.GroupID); err != nil {
+			return nil, err
+		}
 	}
 	return restored, nil
+}
+
+// RestoreSubscriptionBundle restores the selected revoked subscription and
+// siblings removed by the same bundle revoke operation.
+func (s *SubscriptionService) RestoreSubscriptionBundle(ctx context.Context, subscriptionID int64) (*UserSubscription, error) {
+	var (
+		restored  *UserSubscription
+		cacheKeys []subscriptionCacheIdentity
+	)
+	err := s.withSubscriptionUpdateTx(ctx, func(txCtx context.Context) error {
+		selected, err := s.userSubRepo.GetByIDIncludeDeleted(txCtx, subscriptionID)
+		if err != nil {
+			return err
+		}
+		ids, err := s.resolveRevokedSubscriptionBundleIDs(txCtx, selected)
+		if err != nil {
+			return err
+		}
+
+		cacheKeys = make([]subscriptionCacheIdentity, 0, len(ids))
+		for _, id := range ids {
+			item, err := s.restoreSubscription(txCtx, id, false)
+			if err != nil {
+				return err
+			}
+			cacheKeys = append(cacheKeys, subscriptionCacheIdentity{userID: item.UserID, groupID: item.GroupID})
+			if id == subscriptionID {
+				restored = item
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, key := range cacheKeys {
+		if err := s.invalidateSubscriptionCaches(key.userID, key.groupID); err != nil {
+			return nil, err
+		}
+	}
+	return restored, nil
+}
+
+type subscriptionCacheIdentity struct {
+	userID  int64
+	groupID int64
+}
+
+func (s *SubscriptionService) resolveRevokedSubscriptionBundleIDs(ctx context.Context, selected *UserSubscription) ([]int64, error) {
+	if selected == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	if selected.DeletedAt == nil {
+		return nil, ErrSubscriptionNotRevoked
+	}
+	groupIDs, err := s.resolveSubscriptionBundleGroupIDs(ctx, selected.GroupID)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID == selected.GroupID {
+			ids = append(ids, selected.ID)
+			continue
+		}
+		userID, gid := selected.UserID, groupID
+		items, _, err := s.userSubRepo.List(
+			ctx,
+			pagination.PaginationParams{Page: 1, PageSize: 1000},
+			&userID,
+			&gid,
+			SubscriptionStatusRevoked,
+			"",
+			"created_at",
+			"desc",
+		)
+		if err != nil {
+			return nil, err
+		}
+		match := closestRevokedSubscription(items, *selected.DeletedAt)
+		if match == nil {
+			return nil, fmt.Errorf("%w: group %d", ErrSubscriptionBundleIncomplete, groupID)
+		}
+		ids = append(ids, match.ID)
+	}
+	return ids, nil
+}
+
+func closestRevokedSubscription(items []UserSubscription, deletedAt time.Time) *UserSubscription {
+	var (
+		closest      *UserSubscription
+		closestDelta time.Duration
+	)
+	for i := range items {
+		item := &items[i]
+		if item.DeletedAt == nil {
+			continue
+		}
+		delta := item.DeletedAt.Sub(deletedAt)
+		if delta < 0 {
+			delta = -delta
+		}
+		if closest == nil || delta < closestDelta {
+			copy := *item
+			closest = &copy
+			closestDelta = delta
+		}
+	}
+	if closest == nil || closestDelta > subscriptionBundleRestoreMatchWindow {
+		return nil
+	}
+	return closest
 }
 
 // RevokeSubscriptionBundle revokes the selected subscription and any configured

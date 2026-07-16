@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -445,6 +446,35 @@ func TestApplyRefundFinalDeductionDeductsAllBundleSubscriptions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expiresAt.AddDate(0, 0, -3), primary.ExpiresAt)
 	require.Equal(t, expiresAt.AddDate(0, 0, -3), sibling.ExpiresAt)
+}
+
+func TestRollbackRefundRestoresRevokedBundleSubscriptionsWithoutExtending(t *testing.T) {
+	ctx := context.Background()
+	deletedAt := time.Now().Add(-time.Second)
+	expiresAt := time.Now().Add(2 * 24 * time.Hour).Truncate(time.Second)
+	repo := &bundleRestoreUserSubRepoStub{subs: map[int64]*UserSubscription{
+		101: {ID: 101, UserID: 7, GroupID: 5, Status: SubscriptionStatusActive, ExpiresAt: expiresAt, DeletedAt: &deletedAt},
+		102: {ID: 102, UserID: 7, GroupID: 30, Status: SubscriptionStatusActive, ExpiresAt: expiresAt, DeletedAt: &deletedAt},
+	}}
+	subscriptionSvc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	t.Cleanup(subscriptionSvc.Stop)
+	svc := &PaymentService{subscriptionSvc: subscriptionSvc}
+	plan := &RefundPlan{
+		OrderID:         999,
+		Order:           &dbent.PaymentOrder{UserID: 7},
+		DeductionType:   payment.DeductionTypeSubscription,
+		SubDaysToDeduct: 30,
+		SubscriptionIDs: []int64{101, 102},
+	}
+
+	require.True(t, svc.RollbackRefund(ctx, plan, errors.New("gateway refund failed")))
+	require.ElementsMatch(t, []int64{101, 102}, repo.restoredIDs)
+	for _, id := range []int64{101, 102} {
+		restored, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, SubscriptionStatusActive, restored.Status)
+		require.Equal(t, expiresAt, restored.ExpiresAt, "restoring a revoked row must not grant extra days")
+	}
 }
 
 func createPendingRefundOrderForTest(t *testing.T, ctx context.Context, client *dbent.Client, suffix string) *dbent.PaymentOrder {
