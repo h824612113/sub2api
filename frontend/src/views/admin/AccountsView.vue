@@ -168,6 +168,53 @@
                     </div>
 
                     <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
+                    <div class="space-y-2 px-3 py-2">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                          <span class="text-sm font-medium text-gray-700 dark:text-gray-200">
+                            {{ t('admin.accounts.accountAutoProbe.settingsTitle') }}
+                          </span>
+                          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                            {{ t('admin.accounts.accountAutoProbe.settingsHint') }}
+                          </p>
+                        </div>
+                        <Toggle
+                          v-model="accountAutoProbeSettings.enabled"
+                          :aria-label="t('admin.accounts.accountAutoProbe.settingsTitle')"
+                        />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <label class="flex-1 text-xs text-gray-500 dark:text-gray-400" for="account-auto-probe-interval">
+                          {{ t('admin.accounts.accountAutoProbe.intervalMinutes') }}
+                        </label>
+                        <input
+                          id="account-auto-probe-interval"
+                          v-model.number="accountAutoProbeSettings.interval_minutes"
+                          type="number"
+                          min="1"
+                          max="1440"
+                          class="input h-8 w-20 px-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary h-8 px-2"
+                          :disabled="accountAutoProbeSettingsLoading || accountAutoProbeSettingsSaving"
+                          :title="t('common.save')"
+                          @click="saveAccountAutoProbeSettings"
+                        >
+                          <Icon name="check" size="sm" />
+                        </button>
+                      </div>
+                      <div class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                        <Toggle
+                          v-model="accountAutoProbeSettings.auto_recover"
+                          :aria-label="t('admin.accounts.accountAutoProbe.autoRecover')"
+                        />
+                        <span>{{ t('admin.accounts.accountAutoProbe.autoRecover') }}</span>
+                      </div>
+                    </div>
+
+                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
                     <div class="px-2 py-2">
                       <div class="flex items-center justify-between gap-3">
                         <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -298,8 +345,20 @@
             <AccountCapacityCell :account="row" />
           </template>
           <template #cell-status="{ row }">
-            <div class="flex items-center gap-1.5">
+            <div class="flex flex-col items-start gap-1">
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+              <span
+                v-if="getAccountAutoProbeSnapshot(row)"
+                class="inline-flex items-center gap-1 text-[11px]"
+                :class="accountAutoProbeStatusClass(row)"
+                :title="accountAutoProbeStatusTitle(row)"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="accountAutoProbeStatusDotClass(row)" />
+                {{ accountAutoProbeStatusLabel(row) }}
+                <span v-if="accountAutoProbeLatency(row)" class="font-mono opacity-75">
+                  {{ accountAutoProbeLatency(row) }}
+                </span>
+              </span>
             </div>
           </template>
           <template #cell-schedulable="{ row }">
@@ -523,7 +582,7 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSettings, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSettings, UpstreamBillingProbeSnapshot, AccountAutoProbeSettings, AccountAutoProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -610,6 +669,13 @@ const upstreamBillingSettingsSaving = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingNow = ref(Date.now())
 useIntervalFn(() => { upstreamBillingNow.value = Date.now() }, 60_000)
+const accountAutoProbeSettings = reactive<AccountAutoProbeSettings>({
+  enabled: false,
+  interval_minutes: 30,
+  auto_recover: true
+})
+const accountAutoProbeSettingsLoading = ref(false)
+const accountAutoProbeSettingsSaving = ref(false)
 
 // Account tools dropdown
 const showAccountToolsDropdown = ref(false)
@@ -1202,6 +1268,80 @@ const saveUpstreamBillingProbeSettings = async () => {
   } finally {
     upstreamBillingSettingsSaving.value = false
   }
+}
+
+const loadAccountAutoProbeSettings = async () => {
+  // Keep older embedded admin clients functional while they are upgraded.
+  if (typeof adminAPI.accounts.getAccountAutoProbeSettings !== 'function') return
+  accountAutoProbeSettingsLoading.value = true
+  try {
+    Object.assign(accountAutoProbeSettings, await adminAPI.accounts.getAccountAutoProbeSettings())
+  } catch (error) {
+    console.error('Failed to load automatic account probe settings:', error)
+  } finally {
+    accountAutoProbeSettingsLoading.value = false
+  }
+}
+
+const saveAccountAutoProbeSettings = async () => {
+  accountAutoProbeSettingsSaving.value = true
+  try {
+    const saved = await adminAPI.accounts.updateAccountAutoProbeSettings({ ...accountAutoProbeSettings })
+    Object.assign(accountAutoProbeSettings, saved)
+    appStore.showSuccess(t('admin.accounts.accountAutoProbe.settingsSaved'))
+  } catch (error) {
+    console.error('Failed to save automatic account probe settings:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.accountAutoProbe.settingsFailed')))
+  } finally {
+    accountAutoProbeSettingsSaving.value = false
+  }
+}
+
+const getAccountAutoProbeSnapshot = (account: Account): AccountAutoProbeSnapshot | null => {
+  return account.extra?.account_auto_probe ?? null
+}
+
+const accountAutoProbeIsStale = (snapshot: AccountAutoProbeSnapshot | null): boolean => {
+  // Reuse the minute tick so stale badges update without requiring a list reload.
+  const now = upstreamBillingNow.value
+  return Boolean(snapshot?.fresh_until && new Date(snapshot.fresh_until).getTime() < now)
+}
+
+const accountAutoProbeStatusLabel = (account: Account): string => {
+  const snapshot = getAccountAutoProbeSnapshot(account)
+  if (!snapshot || accountAutoProbeIsStale(snapshot)) return t('admin.accounts.accountAutoProbe.stale')
+  return snapshot.status === 'healthy'
+    ? t('admin.accounts.accountAutoProbe.healthy')
+    : t('admin.accounts.accountAutoProbe.failed')
+}
+
+const accountAutoProbeStatusClass = (account: Account): string => {
+  const snapshot = getAccountAutoProbeSnapshot(account)
+  if (!snapshot || accountAutoProbeIsStale(snapshot)) return 'text-gray-400 dark:text-gray-500'
+  return snapshot.status === 'healthy'
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-red-600 dark:text-red-400'
+}
+
+const accountAutoProbeStatusDotClass = (account: Account): string => {
+  const snapshot = getAccountAutoProbeSnapshot(account)
+  if (!snapshot || accountAutoProbeIsStale(snapshot)) return 'bg-gray-400'
+  return snapshot.status === 'healthy' ? 'bg-emerald-500' : 'bg-red-500'
+}
+
+const accountAutoProbeLatency = (account: Account): string => {
+  const snapshot = getAccountAutoProbeSnapshot(account)
+  if (!snapshot?.latency_ms || snapshot.latency_ms <= 0) return ''
+  return `${snapshot.latency_ms}ms`
+}
+
+const accountAutoProbeStatusTitle = (account: Account): string => {
+  const snapshot = getAccountAutoProbeSnapshot(account)
+  if (!snapshot) return t('admin.accounts.accountAutoProbe.notProbed')
+  const detail = snapshot.last_error_code
+    ? ` · ${snapshot.last_error_code}`
+    : ''
+  return `${t('admin.accounts.accountAutoProbe.lastChecked')}: ${formatDateTime(snapshot.last_attempt_at)}${detail}`
 }
 
 const syncPendingListChanges = async () => {
@@ -2039,6 +2179,7 @@ const handleClickOutside = (event: MouseEvent) => {
 onMounted(async () => {
   load()
   loadUpstreamBillingProbeSettings()
+  loadAccountAutoProbeSettings()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
     proxies.value = p

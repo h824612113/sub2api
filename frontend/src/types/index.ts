@@ -908,6 +908,26 @@ export interface UpstreamBillingProbeResult {
   error?: string
 }
 
+export type AccountAutoProbeStatus = 'healthy' | 'failed'
+
+export interface AccountAutoProbeSnapshot {
+  status: AccountAutoProbeStatus
+  latency_ms?: number
+  first_token_ms?: number
+  last_attempt_at: string
+  next_probe_at: string
+  fresh_until: string
+  failure_count?: number
+  last_error_code?: string
+  recovered_at?: string
+}
+
+export interface AccountAutoProbeSettings {
+  enabled: boolean
+  interval_minutes: number
+  auto_recover: boolean
+}
+
 export interface Account {
   id: number
   name: string
@@ -926,6 +946,8 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    account_auto_probe_enabled?: boolean
+    account_auto_probe?: AccountAutoProbeSnapshot
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null

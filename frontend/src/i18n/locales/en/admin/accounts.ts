@@ -198,6 +198,19 @@ export default {
         batchCompleted: 'Probed {count} account(s)',
         batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
       },
+      accountAutoProbe: {
+        settingsTitle: 'Automatic account checks',
+        settingsHint: 'Periodically call schedulable accounts and use real results for health-aware routing. Upstream quota is consumed.',
+        intervalMinutes: 'Check interval (minutes)',
+        autoRecover: 'Auto-recover after success',
+        healthy: 'Check healthy',
+        failed: 'Check failed',
+        stale: 'Check stale',
+        notProbed: 'Not checked yet',
+        lastChecked: 'Last check',
+        settingsSaved: 'Automatic account check settings saved',
+        settingsFailed: 'Failed to save automatic account check settings'
+      },
       allPrivacyModes: 'All Privacy States',
       privacyUnset: 'Unset',
       privacyTrainingOff: 'Training data sharing disabled',

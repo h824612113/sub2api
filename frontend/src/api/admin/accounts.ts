@@ -23,7 +23,8 @@ import type {
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
   UpstreamBillingProbeResult,
-  UpstreamBillingProbeSettings
+  UpstreamBillingProbeSettings,
+  AccountAutoProbeSettings
 } from '@/types'
 
 /**
@@ -864,6 +865,18 @@ export async function updateUpstreamBillingProbeSettings(
   return data
 }
 
+export async function getAccountAutoProbeSettings(): Promise<AccountAutoProbeSettings> {
+  const { data } = await apiClient.get<AccountAutoProbeSettings>('/admin/accounts/auto-probe/settings')
+  return data
+}
+
+export async function updateAccountAutoProbeSettings(
+  settings: AccountAutoProbeSettings
+): Promise<AccountAutoProbeSettings> {
+  const { data } = await apiClient.put<AccountAutoProbeSettings>('/admin/accounts/auto-probe/settings', settings)
+  return data
+}
+
 export async function setUpstreamBillingProbeEnabled(id: number, enabled: boolean): Promise<void> {
   await apiClient.put(`/admin/accounts/${id}/upstream-billing-probe`, { enabled })
 }
@@ -930,6 +943,8 @@ export const accountsAPI = {
   createSparkShadow,
   getUpstreamBillingProbeSettings,
   updateUpstreamBillingProbeSettings,
+  getAccountAutoProbeSettings,
+  updateAccountAutoProbeSettings,
   setUpstreamBillingProbeEnabled,
   probeUpstreamBilling,
   probeUpstreamBillingBatch

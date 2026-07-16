@@ -154,6 +154,19 @@ export default {
         batchCompleted: '已完成 {count} 个账号的倍率探测',
         batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个'
       },
+      accountAutoProbe: {
+        settingsTitle: '自动账号巡检',
+        settingsHint: '按间隔自动调用可调度账号，用真实结果参与健康度调度。会消耗上游额度。',
+        intervalMinutes: '巡检间隔（分钟）',
+        autoRecover: '成功后自动恢复异常账号',
+        healthy: '巡检正常',
+        failed: '巡检失败',
+        stale: '巡检过期',
+        notProbed: '尚未巡检',
+        lastChecked: '最近巡检',
+        settingsSaved: '自动账号巡检设置已保存',
+        settingsFailed: '保存自动账号巡检设置失败'
+      },
       allPrivacyModes: '全部Privacy状态',
       privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',
