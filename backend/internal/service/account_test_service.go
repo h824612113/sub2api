@@ -75,6 +75,33 @@ type AccountTestService struct {
 	tlsFPProfileService       *TLSFingerprintProfileService
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
+	openAIScheduleReporter    interface {
+		ReportOpenAIAccountScheduleResult(accountID int64, model string, success bool, firstTokenMs *int)
+	}
+}
+
+const (
+	accountTestProbeTimingKey = "account_test_probe_timing"
+	accountTestAccountKey     = "account_test_account"
+)
+
+type accountTestProbeTiming struct {
+	startedAt time.Time
+	once      sync.Once
+	firstMs   *int
+}
+
+func (t *accountTestProbeTiming) mark(now time.Time) {
+	if t == nil {
+		return
+	}
+	t.once.Do(func() {
+		elapsed := int(now.Sub(t.startedAt).Milliseconds())
+		if elapsed < 0 {
+			elapsed = 0
+		}
+		t.firstMs = &elapsed
+	})
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -185,6 +212,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	c.Set(accountTestAccountKey, account)
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
@@ -1896,6 +1924,13 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if c != nil && (event.Type == "content" || event.Type == "image") {
+		if value, exists := c.Get(accountTestProbeTimingKey); exists {
+			if timing, ok := value.(*accountTestProbeTiming); ok {
+				timing.mark(time.Now())
+			}
+		}
+	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)
@@ -1919,6 +1954,8 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
+	timing := &accountTestProbeTiming{startedAt: startedAt}
+	ginCtx.Set(accountTestProbeTimingKey, timing)
 
 	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
 
@@ -1934,14 +1971,26 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 		}
 	}
 
-	return &ScheduledTestResult{
+	result := &ScheduledTestResult{
 		Status:       status,
 		ResponseText: responseText,
 		ErrorMessage: errMsg,
 		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
+		FirstTokenMs: timing.firstMs,
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
-	}, nil
+	}
+	accountValue, accountExists := ginCtx.Get(accountTestAccountKey)
+	account, accountOK := accountValue.(*Account)
+	if s.openAIScheduleReporter != nil && accountExists && accountOK && account.IsOpenAICompatible() {
+		s.openAIScheduleReporter.ReportOpenAIAccountScheduleResult(
+			accountID,
+			modelID,
+			status == "success",
+			result.FirstTokenMs,
+		)
+	}
+	return result, nil
 }
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.

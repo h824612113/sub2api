@@ -105,6 +105,7 @@ func provideCleanup(
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
+	accountAutoProbe *service.AccountAutoProbeService,
 	auditLog *service.AuditLogService,
 ) func() {
 	return func() {
@@ -297,6 +298,12 @@ func provideCleanup(
 			{"UpstreamBillingProbeService", func() error {
 				if upstreamBillingProbe != nil {
 					upstreamBillingProbe.Stop()
+				}
+				return nil
+			}},
+			{"AccountAutoProbeService", func() error {
+				if accountAutoProbe != nil {
+					accountAutoProbe.Stop()
 				}
 				return nil
 			}},

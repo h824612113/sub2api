@@ -379,6 +379,10 @@ const (
 	// for probing remote Sub2API API-key billing metadata.
 	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
 
+	// SettingKeyAccountAutoProbeSettings stores the opt-in automatic connectivity
+	// probe configuration for managed upstream accounts.
+	SettingKeyAccountAutoProbeSettings = "account_auto_probe_settings"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

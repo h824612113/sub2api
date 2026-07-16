@@ -63,11 +63,17 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokUsageProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
+	accountAutoProbe        *service.AccountAutoProbeService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
 func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamBillingProbeService) {
 	h.upstreamBillingProbe = probe
+}
+
+// SetAccountAutoProbeService attaches the automatic account health runner.
+func (h *AccountHandler) SetAccountAutoProbeService(probe *service.AccountAutoProbeService) {
+	h.accountAutoProbe = probe
 }
 
 // NewAccountHandler creates a new admin account handler

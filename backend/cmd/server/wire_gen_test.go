@@ -57,6 +57,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		&service.OpsAlertEvaluatorService{},
 		&service.OpsCleanupService{},
 		&service.OpsScheduledReportService{},
+		nil, // registrationReminder
 		opsSystemLogSinkSvc,
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
@@ -84,6 +85,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // channelMonitorRunner
 		nil, // quotaFlusher
 		nil, // upstreamBillingProbe
+		nil, // accountAutoProbe
 		nil, // auditLog
 	)
 
