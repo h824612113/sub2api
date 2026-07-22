@@ -12,8 +12,11 @@
 - 数据容器：`sub2api-postgres`、`sub2api-redis`
 - 生产健康地址：`http://127.0.0.1:8080/health`、`https://ai.cyberhz.com/health`
 - 备份目录：`/root/sub2api-backups`
+- 当前实际生产分支约定：以 `merge/upstream-main-YYYYMMDD` 这类合并分支为准，例如 `merge/upstream-main-20260716`。
 
 不要以本地 `main` 作为商业版本基线。它可能长期落后于 `origin/main`，也不包含当前商业改动。每次都应从当前实际生产分支创建新的合并分支。
+
+`deploy/deploy-commercial.sh` 中如果仍写着旧分支名，不能直接把脚本里的分支名当作生产代码来源。以运行中容器的二进制版本、镜像构建参数和当前合并分支提交为准。
 
 ## 快速流程
 
@@ -68,6 +71,8 @@ git log --oneline --decorate --max-count=12
 
 每次上游合并后都必须确认以下逻辑仍然存在。详细背景见 `docs/SUBSCRIPTION_BUNDLE_GROUPS_CHANGE_RECORD.md`。
 
+### 3.1 自有功能清单
+
 - 同一套餐的主分组和候选分组共享周/月额度池。
 - 用户订阅页按共享池聚合展示，不能重复累计同池用量。
 - 购买和续费会发放或延长 bundle 内全部订阅分组。
@@ -75,8 +80,9 @@ git log --oneline --decorate --max-count=12
 - 负数兑换码会扣减整个 bundle，并同步清理订阅 L1 缓存。
 - 退款最终扣减会处理整个 bundle；退款失败回滚也必须恢复整个 bundle。
 - 后台撤销和恢复都会处理整个 bundle，不能只恢复主分组或候选分组中的一条。
-- 购买、续费、充值跳转仍使用站内预期入口，不能被上游路由覆盖。
+- 购买、续费、充值跳转仍使用商业卡密店入口，不能被上游站内支付路由覆盖。
 - 用户侧不能显示 `quota_pool_*`、`subscription_bundle_groups` 等内部配置行。
+- Docker Compose 生产部署固定使用本地商业镜像 `sub2api-commercial:codex-commercial-relay-mvp`，并关闭在线更新，避免自动拉取上游 release 覆盖商业版本。
 
 重点复查文件：
 
@@ -88,9 +94,39 @@ backend/internal/service/billing_cache_service.go
 backend/internal/service/payment_fulfillment.go
 backend/internal/service/payment_refund.go
 backend/internal/service/redeem_service.go
+frontend/src/views/user/SubscriptionsView.vue
 frontend/src/views/user/PaymentView.vue
 frontend/src/components/payment/SubscriptionPlanCard.vue
+deploy/docker-compose.yml
 ```
+
+### 3.2 必查代码锚点
+
+合并冲突解决后，至少运行以下 grep，确认关键锚点没有被上游覆盖：
+
+```bash
+rg -n 'quota_pool|subscription_bundle_groups|AssignOrExtendSubscriptionBundle|RestoreSubscriptionBundle|PublicGroupDescription|InvalidateRedeemCaches' backend/internal/service backend/internal/handler
+rg -n 'pay.ldxp.cn/shop/7HOK84LL|SUBSCRIPTION_CARD_SHOP_URL|openCardShop|renew|purchase' frontend/src/views/user frontend/src/components/payment
+rg -n 'sub2api-commercial:codex-commercial-relay-mvp|APP_DISABLE_UPDATES|DISABLE_UPDATES|online updates disabled' deploy/docker-compose.yml
+```
+
+当前商业卡密店地址应为：
+
+```text
+https://pay.ldxp.cn/shop/7HOK84LL
+```
+
+如果以后更换卡密店地址，应在本节同步更新，避免下次合并时误判。
+
+### 3.3 页面和接口口径
+
+合并后重点人工看以下页面和接口：
+
+- 用户订阅页：主分组和候选分组应按同一共享池展示，不应把同一池额度重复累计。
+- 用户购买/续费入口：点击后应打开商业卡密店地址。
+- 后台分配订阅：下拉可以解析 `subscription_bundle_groups`，但用户侧看不到这些内部配置行。
+- 支付回调和兑换码发放：订阅类产品必须发放整个 bundle，而不是只发放单个 group。
+- 退款、撤销、恢复：必须对 bundle 内所有关联订阅保持一致。
 
 ## 4. 快速验证门槛
 
@@ -126,6 +162,20 @@ go test ./...
 ```
 
 只有测试和差异检查完成后才提交合并结果。测试通过不等于已授权部署。
+
+合并提交建议使用明确消息，例如：
+
+```bash
+git commit
+# Merge upstream/main into merge/upstream-main-YYYYMMDD
+```
+
+提交后记录：
+
+```bash
+git rev-parse --short=12 HEAD
+git describe --tags --always --dirty
+```
 
 ## 5. 部署前备份
 
@@ -176,6 +226,32 @@ DOCKER_BUILDKIT=0 docker build \
   -f Dockerfile .
 ```
 
+如果传统构建器仍因 Dockerfile 中的 BuildKit 语法失败，例如：
+
+- `FROM --platform=${BUILDPLATFORM}`
+- `RUN --mount=type=cache ...`
+
+可以临时复制 Dockerfile 到 `/tmp` 后移除 BuildKit 专用语法再构建。不要把临时 Dockerfile 提交进仓库。
+
+```bash
+cp Dockerfile /tmp/sub2api-deploy.Dockerfile
+# 手工确认后，将 --platform=${BUILDPLATFORM}/${TARGETPLATFORM} 固定为 linux/amd64，
+# 并删除 go mod download 和 go build 步骤中的 RUN --mount=type=cache 前缀。
+DOCKER_BUILDKIT=0 docker build \
+  -t sub2api-commercial:codex-commercial-relay-mvp \
+  --build-arg COMMIT="$(git rev-parse --short=12 HEAD)" \
+  --build-arg VERSION="$(git describe --tags --always --dirty)" \
+  --build-arg GOPROXY=https://goproxy.cn,direct \
+  --build-arg GOSUMDB=sum.golang.google.cn \
+  -f /tmp/sub2api-deploy.Dockerfile .
+```
+
+部署时要带生产 env 文件：
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --no-deps --force-recreate sub2api
+```
+
 确认新镜像 ID 与旧镜像不同，再只重建应用：
 
 ```bash
@@ -193,6 +269,7 @@ docker ps --filter name=sub2api --format='{{.Names}}\t{{.Status}}'
 curl -fsS http://127.0.0.1:8080/health
 curl -fsS https://ai.cyberhz.com/health
 curl -fsS -o /dev/null -w '%{http_code}\n' https://ai.cyberhz.com/dashboard
+docker exec sub2api /app/sub2api --version
 ```
 
 日志检查：
@@ -209,6 +286,12 @@ docker logs --since 15m sub2api 2>&1 | rg -i 'panic|fatal|migration|failed to in
 - `EMAIL_NOT_CONFIGURED`：当前表示邮件服务未配置，会影响订阅到期提醒，但不影响额度和支付主流程。
 
 部署后再次读取核心表计数。用户、账户、API Key、订阅数量不能无故减少，`usage_logs` 正常情况下会继续增长。
+
+版本判断规则：
+
+- `docker exec sub2api /app/sub2api --version` 的 commit 必须等于本次合并提交短哈希。
+- `docker ps` 必须显示 `sub2api` 为 `healthy`。
+- `/health` 必须返回 `{"status":"ok"}`。
 
 ## 8. 回滚
 
