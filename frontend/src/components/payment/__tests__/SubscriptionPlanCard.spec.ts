@@ -86,4 +86,15 @@ describe("SubscriptionPlanCard", () => {
     expect(mountPlanCard("openai", { currency: "USD" }).text()).toContain("$10USD");
     expect(mountPlanCard("openai", { currency: "" }).text()).toContain("$10");
   });
+
+  it("hides the duplicated monthly limit for Ultra Plus plans", () => {
+    const text = mountPlanCard("openai", {
+      product_name: "openai_ultra_plus_monthly",
+      weekly_limit_usd: 4000,
+      monthly_limit_usd: 16000,
+    }).text();
+
+    expect(text).toContain("$4000");
+    expect(text).not.toContain("$16000");
+  });
 });

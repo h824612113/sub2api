@@ -152,6 +152,7 @@ const showOriginalPrice = computed(() =>
 const HIDE_MONTHLY_LIMIT_PRODUCTS = new Set([
   'openai_max_monthly',
   'openai_ultra_monthly',
+  'openai_ultra_plus_monthly',
 ])
 
 function extractFeatureLimitUSD(features: string[], label: '每日' | '每周' | '每月'): number | null {

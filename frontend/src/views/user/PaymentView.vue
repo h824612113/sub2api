@@ -790,6 +790,7 @@ const selectedPlanShowOriginalPrice = computed(() =>
 const HIDE_MONTHLY_LIMIT_PRODUCTS = new Set([
   'openai_max_monthly',
   'openai_ultra_monthly',
+  'openai_ultra_plus_monthly',
 ])
 
 function extractPlanFeatureLimitUSD(plan: SubscriptionPlan | null, label: '每日' | '每周' | '每月'): number | null {
