@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
+import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import type { CheckoutInfoResponse, MethodLimit, SubscriptionPlan } from '@/types/payment'
 
 const routeState = vi.hoisted(() => ({
@@ -261,6 +262,62 @@ describe('PaymentView subscription card shop redirects', () => {
       'https://pay.ldxp.cn/shop/7HOK84LL',
     )
     expect(createOrder).not.toHaveBeenCalled()
+  })
+})
+
+async function mountSubscriptionPlanList(planCount: number) {
+  vi.useRealTimers()
+  routeState.path = '/purchase'
+  routeState.query = { tab: 'subscription' }
+  routerReplace.mockReset().mockResolvedValue(undefined)
+  routerPush.mockReset().mockResolvedValue(undefined)
+  routerResolve.mockClear()
+  createOrder.mockReset()
+  refreshUser.mockReset()
+  fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+  showError.mockReset()
+  showInfo.mockReset()
+  showWarning.mockReset()
+  redirectToExternalUrl.mockReset()
+  const basePlan = checkoutInfoWithPlansFixture().data.plans[0]
+  const plans = Array.from({ length: planCount }, (_, index) => ({
+    ...basePlan,
+    id: index + 1,
+    name: `Plan ${index + 1}`,
+  }))
+  getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({ plans }))
+  bridgeInvoke.mockReset()
+  window.localStorage.clear()
+  ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
+
+  const wrapper = shallowMount(PaymentView, {
+    global: {
+      stubs: {
+        AppLayout: {
+          template: '<div><slot /></div>',
+        },
+        Teleport: true,
+        Transition: false,
+      },
+    },
+  })
+  await flushPromises()
+  await flushPromises()
+  return wrapper
+}
+
+describe('PaymentView subscription plan grid', () => {
+  it.each([3, 4, 6])('keeps %i plans on the existing mobile/tablet/desktop grid', async (planCount) => {
+    const wrapper = await mountSubscriptionPlanList(planCount)
+    const cards = wrapper.findAllComponents(SubscriptionPlanCard)
+
+    expect(cards).toHaveLength(planCount)
+    expect([...(cards[0].element.parentElement?.classList ?? [])]).toEqual(expect.arrayContaining([
+      'grid',
+      'grid-cols-1',
+      'sm:grid-cols-2',
+      'lg:grid-cols-3',
+    ]))
   })
 })
 
