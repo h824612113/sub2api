@@ -117,7 +117,7 @@ func TestProfitControl_ResponsesImageIntentSkipsGateAtScheduler(t *testing.T) {
 	expensive.Schedulable = true
 	expensive.Concurrency = 2
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*expensive}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{*expensive}},
 		cfg:                &config.Config{},
 		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),

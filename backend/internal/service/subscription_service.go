@@ -950,7 +950,7 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 	}
 
 	if isExpired {
-		if err := s.updateExistingSubscriptionTerm(ctx, sub, "", now, newExpiresAt, true); err != nil {
+		if err := s.updateExistingSubscriptionTerm(ctx, sub.ID, days, "", false); err != nil {
 			return nil, err
 		}
 	} else {

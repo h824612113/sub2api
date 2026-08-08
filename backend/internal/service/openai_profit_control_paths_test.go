@@ -38,7 +38,7 @@ func TestProfitControl_PreviousResponseStickyVetoKeepsBinding(t *testing.T) {
 	cache := &stubGatewayCache{}
 	store := NewOpenAIWSStateStore(cache)
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{expensive}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{expensive}},
 		cache:              cache,
 		cfg:                newOpenAIWSV2TestConfig(),
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -57,7 +57,7 @@ func TestProfitControl_PreviousResponseStickyVetoKeepsBinding(t *testing.T) {
 
 	// 上游倍率回落（探测刷新）后同一绑定重新可用。
 	recovered := profitControlWSAccount(31, 0.3, time.Now())
-	svc.accountRepo = stubOpenAIAccountRepo{accounts: []Account{recovered}}
+	svc.accountRepo = &stubOpenAIAccountRepo{accounts: []Account{recovered}}
 	selection, err = svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_profit", "gpt-5.1", nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
@@ -80,7 +80,7 @@ func TestProfitControl_LegacyEngineFiltersCandidates(t *testing.T) {
 		account.Concurrency = 2
 	}
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*cheap, *expensive}},
+		accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{*cheap, *expensive}},
 		cfg:                &config.Config{},
 		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("false"),
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
@@ -340,7 +340,7 @@ func TestProfitControl_LegacyEngineDefersStickyBindingUnderGate(t *testing.T) {
 	newSvc := func(bindings map[string]int64) (*OpenAIGatewayService, *schedulerTestGatewayCache) {
 		cache := &schedulerTestGatewayCache{sessionBindings: bindings}
 		return &OpenAIGatewayService{
-			accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*cheap, *expensive}},
+			accountRepo:        &stubOpenAIAccountRepo{accounts: []Account{*cheap, *expensive}},
 			cfg:                &config.Config{},
 			rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("false"),
 			concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
