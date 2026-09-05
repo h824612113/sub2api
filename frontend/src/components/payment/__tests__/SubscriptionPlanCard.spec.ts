@@ -78,13 +78,13 @@ describe("SubscriptionPlanCard", () => {
     expect(mountPlanCard("openai", { validity_days: 30, validity_unit: "day" }).text()).toContain("/ 30payment.days");
   });
 
-  it("uses the configured currency symbol while preserving USD for legacy plans", () => {
+  it("uses the configured currency symbol and defaults legacy plans to CNY", () => {
     const cnyPlan = mountPlanCard("openai", { currency: "CNY", original_price: 20 }).text();
 
     expect(cnyPlan).toContain("¥10CNY");
     expect(cnyPlan).toContain("¥20CNY");
     expect(mountPlanCard("openai", { currency: "USD" }).text()).toContain("$10USD");
-    expect(mountPlanCard("openai", { currency: "" }).text()).toContain("$10");
+    expect(mountPlanCard("openai", { currency: "" }).text()).toContain("¥10");
   });
 
   it("hides the duplicated monthly limit for Ultra Plus plans", () => {
