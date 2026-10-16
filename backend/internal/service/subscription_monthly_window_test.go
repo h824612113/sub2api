@@ -166,7 +166,7 @@ func TestValidateAndCheckLimitsKeepsLegacyMonthlyUsageBeforeExpiry(t *testing.T)
 	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
 	svc.now = func() time.Time { return now }
 
-	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, &Group{MonthlyLimitUSD: &limit})
+	needsMaintenance, err := svc.ValidateAndCheckLimits(context.Background(), sub, &Group{MonthlyLimitUSD: &limit})
 
 	require.ErrorIs(t, err, ErrMonthlyLimitExceeded)
 	require.False(t, needsMaintenance)
@@ -188,7 +188,7 @@ func TestValidateAndCheckLimitsResetsMonthlyUsageWithPartialFinalPeriod(t *testi
 	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
 	svc.now = func() time.Time { return now }
 
-	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, &Group{MonthlyLimitUSD: &limit})
+	needsMaintenance, err := svc.ValidateAndCheckLimits(context.Background(), sub, &Group{MonthlyLimitUSD: &limit})
 
 	require.NoError(t, err)
 	require.True(t, needsMaintenance)
@@ -201,7 +201,7 @@ func TestValidateAndCheckLimitsRejectsExactExpiry(t *testing.T) {
 	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
 	svc.now = func() time.Time { return now }
 
-	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, &Group{})
+	needsMaintenance, err := svc.ValidateAndCheckLimits(context.Background(), sub, &Group{})
 
 	require.ErrorIs(t, err, ErrSubscriptionExpired)
 	require.False(t, needsMaintenance)
