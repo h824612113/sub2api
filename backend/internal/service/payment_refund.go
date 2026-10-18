@@ -898,15 +898,20 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 }
 
 func (s *PaymentService) rollbackSubscriptionDeduction(ctx context.Context, subscriptionID int64, days int) error {
+	// A deduction that would expire a subscription is represented by a soft
+	// delete. Restore that row directly so rollback preserves its original
+	// expiry instead of attempting to extend a row hidden from active queries.
+	if sub, err := s.subscriptionSvc.GetByIDIncludeDeleted(ctx, subscriptionID); err == nil && sub != nil && sub.DeletedAt != nil {
+		_, err := s.subscriptionSvc.RestoreSubscription(ctx, subscriptionID)
+		return err
+	}
+
 	if _, err := s.subscriptionSvc.ExtendSubscription(ctx, subscriptionID, days); err == nil {
 		return nil
 	} else if !errors.Is(err, ErrSubscriptionNotFound) {
 		return err
 	}
 
-	// A deduction that would expire the subscription is implemented as a soft
-	// delete without changing expires_at. Restoring that row is the full rollback;
-	// extending it as well would grant extra days.
 	_, err := s.subscriptionSvc.RestoreSubscription(ctx, subscriptionID)
 	return err
 }
