@@ -79,4 +79,14 @@ describe('AppSidebar subscription feature flag', () => {
     expect(componentSource).toMatch(/case 'subscription_only':\s*return t\('nav\.subscribe'\)/)
     expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
   })
+
+  it('keeps external card-shop purchases visible when built-in payments are disabled or simple mode is active', () => {
+    const purchaseEntry = componentSource.split('\n').find(line =>
+      line.includes("path: '/purchase'") && line.includes('label: purchaseNavLabel.value'),
+    )
+    expect(purchaseEntry).toBeDefined()
+    expect(purchaseEntry).not.toContain('featureFlag:')
+    expect(purchaseEntry).not.toContain('hideInSimpleMode:')
+    expect(componentSource).toMatch(/path: '\/orders'[^\n]*featureFlag: flagPayment/)
+  })
 })

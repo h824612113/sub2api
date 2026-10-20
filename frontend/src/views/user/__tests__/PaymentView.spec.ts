@@ -263,9 +263,49 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
 }
 
 describe('PaymentView subscription card shop redirects', () => {
+  afterEach(() => {
+    appStoreState.setPublicSettings(undefined)
+  })
+
+  it('opens the card shop from a subscription plan when built-in payments are disabled', async () => {
+    appStoreState.setPublicSettings({ payment_enabled: false })
+    const openShop = vi.spyOn(window, 'open').mockReturnValue(null)
+    const wrapper = await mountSubscriptionPlanList(2)
+    await wrapper.findAllComponents(SubscriptionPlanCard)[0].vm.$emit(
+      'select', checkoutInfoWithPlansFixture().data.plans[0],
+    )
+
+    expect(openShop).toHaveBeenCalledWith(
+      'https://pay.ldxp.cn/shop/7HOK84LL', '_blank', 'noopener,noreferrer',
+    )
+    expect(createOrder).not.toHaveBeenCalled()
+    wrapper.unmount()
+    openShop.mockRestore()
+  })
+
+  it('keeps all four top-up links working without any built-in payment methods', async () => {
+    appStoreState.setPublicSettings({ payment_enabled: false })
+    const openShop = vi.spyOn(window, 'open').mockReturnValue(null)
+    const wrapper = await mountSubscriptionConfirm({ checkout: { methods: {} } })
+    await wrapper.findAll('button').find(button => button.text() === 'payment.tabTopUp')!.trigger('click')
+    const purchaseButtons = wrapper.findAll('button').filter(button => button.text() === '去补给')
+
+    expect(purchaseButtons).toHaveLength(4)
+    for (const button of purchaseButtons) await button.trigger('click')
+    expect(openShop).toHaveBeenCalledTimes(4)
+    expect(openShop).toHaveBeenCalledWith(
+      'https://pay.ldxp.cn/shop/7HOK84LL', '_blank', 'noopener,noreferrer',
+    )
+    expect(createOrder).not.toHaveBeenCalled()
+    wrapper.unmount()
+    openShop.mockRestore()
+  })
+
   it('redirects legacy renewal query links to the card shop', async () => {
+    appStoreState.setPublicSettings({ payment_enabled: false })
     await mountSubscriptionConfirm({
       checkout: {
+        methods: {},
         balance_recharge_multiplier: 0.14,
         subscription_usd_to_cny_rate: 7.15,
       },
