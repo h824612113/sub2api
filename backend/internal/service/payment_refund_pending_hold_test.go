@@ -310,3 +310,93 @@ func createCompletedRefundableOrderForTest(t *testing.T, ctx context.Context, cl
 	require.NoError(t, err)
 	return order
 }
+
+type pendingRefundSubscriptionRepoStub struct {
+	*bundleRestoreUserSubRepoStub
+}
+
+func (r *pendingRefundSubscriptionRepoStub) GetByIDForUpdate(ctx context.Context, id int64) (*UserSubscription, error) {
+	return r.GetByID(ctx, id)
+}
+
+func (r *pendingRefundSubscriptionRepoStub) ExtendExpiry(_ context.Context, id int64, expiresAt time.Time) error {
+	if sub := r.subs[id]; sub != nil && sub.DeletedAt == nil {
+		sub.ExpiresAt = expiresAt
+		return nil
+	}
+	return ErrSubscriptionNotFound
+}
+
+func TestRefundPendingPreservesAndSettlesBundleDeductions(t *testing.T) {
+	for _, queryStatus := range []string{payment.ProviderStatusSuccess, payment.ProviderStatusFailed} {
+		for _, revoked := range []bool{false, true} {
+			t.Run(queryStatus+"/revoked="+strconv.FormatBool(revoked), func(t *testing.T) {
+				ctx := context.Background()
+				client := newPaymentConfigServiceTestClient(t)
+				order := createPendingRefundOrderForTest(t, ctx, client, "bundle-held")
+				expiresAt := time.Now().Add(27 * 24 * time.Hour).Truncate(time.Second)
+				deletedAt := time.Now().Add(-time.Second)
+				repo := &pendingRefundSubscriptionRepoStub{&bundleRestoreUserSubRepoStub{subs: map[int64]*UserSubscription{
+					101: {ID: 101, UserID: order.UserID, GroupID: 5, Status: SubscriptionStatusActive, ExpiresAt: expiresAt},
+					102: {ID: 102, UserID: order.UserID, GroupID: 30, Status: SubscriptionStatusActive, ExpiresAt: expiresAt},
+				}}}
+				if revoked {
+					for _, sub := range repo.subs {
+						sub.DeletedAt = &deletedAt
+					}
+				}
+				subscriptionSvc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+				t.Cleanup(subscriptionSvc.Stop)
+				svc := &PaymentService{entClient: client, loadBalancer: &captureLoadBalancer{}, subscriptionSvc: subscriptionSvc}
+				restore := replacePaymentProviderFactoryForTest(t, &pendingRefundProviderTestDouble{queryStatus: queryStatus})
+				defer restore()
+				plan := &RefundPlan{
+					OrderID: order.ID, Order: order, RefundAmount: order.Amount,
+					DeductionType: payment.DeductionTypeSubscription, SubDaysToDeduct: 3,
+					SubscriptionID: 101, SubscriptionIDs: []int64{101, 102},
+				}
+				_, err := svc.markRefundPending(ctx, plan, &payment.RefundResponse{RefundID: "rf_bundle"})
+				require.NoError(t, err)
+				detail, err := svc.latestRefundPendingDetail(ctx, order.ID)
+				require.NoError(t, err)
+				require.Equal(t, []int64{101, 102}, detail.SubscriptionIDs, "pending audit must preserve every deducted subscription")
+
+				result, err := svc.QueryAndFinalizeRefund(ctx, order.ID)
+				require.NoError(t, err)
+				require.NotContains(t, result.Warning, "rollback failed")
+				require.Equal(t, queryStatus == payment.ProviderStatusSuccess, result.Success)
+				for _, sub := range repo.subs {
+					wantExpiry := expiresAt
+					if queryStatus == payment.ProviderStatusFailed {
+						require.Nil(t, sub.DeletedAt)
+						if !revoked {
+							wantExpiry = expiresAt.AddDate(0, 0, 3)
+						}
+					} else if revoked {
+						require.NotNil(t, sub.DeletedAt)
+					}
+					require.Equal(t, wantExpiry, sub.ExpiresAt)
+				}
+				_, err = svc.QueryAndFinalizeRefund(ctx, order.ID)
+				require.Equal(t, "INVALID_STATUS", infraerrors.Reason(err), "settlement must not restore or deduct twice")
+			})
+		}
+	}
+}
+
+func TestReturnHeldRefundDeductionSupportsLegacySubscriptionAudit(t *testing.T) {
+	ctx := context.Background()
+	expiresAt := time.Now().Add(27 * 24 * time.Hour).Truncate(time.Second)
+	repo := &pendingRefundSubscriptionRepoStub{&bundleRestoreUserSubRepoStub{subs: map[int64]*UserSubscription{
+		101: {ID: 101, UserID: 7, GroupID: 5, Status: SubscriptionStatusActive, ExpiresAt: expiresAt},
+	}}}
+	subscriptionSvc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	t.Cleanup(subscriptionSvc.Stop)
+	svc := &PaymentService{subscriptionSvc: subscriptionSvc}
+	plan := &RefundPlan{}
+	detail := refundPendingAuditDetail{DeductionHeld: true, DeductionType: payment.DeductionTypeSubscription, SubDaysDeducted: 3, SubscriptionID: 101}
+	detail.applyTo(plan)
+	require.Equal(t, []int64{101}, plan.SubscriptionIDs)
+	require.NoError(t, svc.returnHeldRefundDeduction(ctx, plan))
+	require.Equal(t, expiresAt.AddDate(0, 0, 3), repo.subs[101].ExpiresAt)
+}

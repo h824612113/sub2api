@@ -676,9 +676,15 @@ func (s *PaymentService) returnHeldRefundDeduction(ctx context.Context, p *Refun
 			return fmt.Errorf("return held balance deduction: %w", err)
 		}
 	}
-	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, p.SubDaysToDeduct); err != nil {
-			return fmt.Errorf("return held subscription deduction: %w", err)
+	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 {
+		subscriptionIDs := p.SubscriptionIDs
+		if len(subscriptionIDs) == 0 && p.SubscriptionID > 0 {
+			subscriptionIDs = []int64{p.SubscriptionID}
+		}
+		for _, subscriptionID := range subscriptionIDs {
+			if err := s.rollbackSubscriptionDeduction(ctx, subscriptionID, p.SubDaysToDeduct); err != nil {
+				return fmt.Errorf("return held subscription deduction: %w", err)
+			}
 		}
 	}
 	return nil
@@ -713,6 +719,7 @@ type refundPendingAuditDetail struct {
 	BalanceDeducted     float64 `json:"balanceDeducted"`
 	SubDaysDeducted     int     `json:"subDaysDeducted"`
 	SubscriptionID      int64   `json:"subscriptionID,omitempty"`
+	SubscriptionIDs     []int64 `json:"subscriptionIDs,omitempty"`
 	// requestedAt 取自审计记录的创建时间，不参与序列化。
 	requestedAt time.Time
 }
@@ -726,6 +733,11 @@ func (d refundPendingAuditDetail) applyTo(p *RefundPlan) {
 	p.BalanceToDeduct = d.BalanceDeducted
 	p.SubDaysToDeduct = d.SubDaysDeducted
 	p.SubscriptionID = d.SubscriptionID
+	p.SubscriptionIDs = append([]int64(nil), d.SubscriptionIDs...)
+	if len(p.SubscriptionIDs) == 0 && d.SubscriptionID > 0 {
+		// Older pending audits only recorded a single subscription.
+		p.SubscriptionIDs = []int64{d.SubscriptionID}
+	}
 }
 
 // latestRefundPendingDetail 读取最近一次 REFUND_PENDING 审计。没有记录视为旧订单（扣减已在
@@ -828,6 +840,7 @@ func (s *PaymentService) markRefundPending(ctx context.Context, p *RefundPlan, r
 		BalanceDeducted: p.BalanceToDeduct,
 		SubDaysDeducted: p.SubDaysToDeduct,
 		SubscriptionID:  p.SubscriptionID,
+		SubscriptionIDs: p.SubscriptionIDs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal refund pending audit: %w", err)

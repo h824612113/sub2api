@@ -7,6 +7,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
+import { formatDurationSeconds } from '@/utils/format'
 import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
 import { getAccountNameMap } from '../utils/accountNameMap'
 
@@ -54,7 +55,7 @@ const latencyLabel = computed(() => t(showTTFT.value ? 'admin.ops.ttftLabel' : '
 
 function formatLatency(row: OpsRequestDetail): string {
   const value = showTTFT.value ? row.first_token_ms : row.duration_ms
-  return typeof value === 'number' ? `${value} ms` : '-'
+  return formatDurationSeconds(value)
 }
 
 const rangeLabel = computed(() => {

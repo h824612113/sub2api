@@ -79,8 +79,11 @@ git log --oneline --decorate --max-count=12
 - 正数订阅兑换码会发放整个 bundle。
 - 负数兑换码会扣减整个 bundle，并同步清理订阅 L1 缓存。
 - 退款最终扣减会处理整个 bundle；退款失败回滚也必须恢复整个 bundle。
+- 异步退款进入 pending 时，审计必须保存全部 `subscriptionIDs`；终态失败应恢复全部预扣分组，已撤销的行按原到期时间恢复，成功不得重复扣减。
 - 后台撤销和恢复都会处理整个 bundle，不能只恢复主分组或候选分组中的一条。
 - 购买、续费、充值跳转仍使用商业卡密店入口，不能被上游站内支付路由覆盖。
+- 外部小铺的 `/purchase` 导航不得依赖 `payment_enabled` 或被简易模式隐藏；站内订单仍按站内支付开关控制。
+- 运维总耗时和首字耗时使用秒数展示，桌面与移动端明细应和概览保持一致。
 - 用户侧不能显示 `quota_pool_*`、`subscription_bundle_groups` 等内部配置行。
 - Docker Compose 生产部署固定使用本地商业镜像 `sub2api-commercial:codex-commercial-relay-mvp`，并关闭在线更新，避免自动拉取上游 release 覆盖商业版本。
 
@@ -135,6 +138,7 @@ https://pay.ldxp.cn/shop/7HOK84LL
 ```bash
 cd frontend
 pnpm typecheck
+pnpm exec vitest run src/components/layout/__tests__/AppSidebar.spec.ts src/views/user/__tests__/PaymentView.spec.ts src/components/keys/__tests__/UseKeyModal.spec.ts src/views/admin/ops/components/__tests__/OpsRequestDetailsModal.spec.ts src/components/user/__tests__/MonitorDetailDialog.spec.ts
 cd ..
 ```
 
@@ -150,7 +154,7 @@ go test ./internal/service -run '^$' -count=1
 订阅共享额度、购买发放、兑换缓存和退款专项：
 
 ```bash
-go test -tags=unit ./internal/service -run 'Test(GroupQuotaPoolKey|AggregatePooledSubscriptionQuota|SubscriptionServiceList_NormalizesPooledDisplayPerUser|SubscriptionServiceValidateAndCheckLimits|BillingCacheServiceCheckSubscriptionEligibility|ExtendSubscriptionBundle|RestoreSubscriptionBundleRestoresMatchingRevokedSiblings|ExecuteSubscriptionFulfillment|RedeemService_InvalidateRedeemCaches_SubscriptionBundleL1AfterCommit|ApplyRefundFinalDeductionDeductsAllBundleSubscriptions|RollbackRefundRestoresRevokedBundleSubscriptionsWithoutExtending)' -count=1
+go test -tags=unit ./internal/service -run 'Test(GroupQuotaPoolKey|AggregatePooledSubscriptionQuota|SubscriptionServiceList_NormalizesPooledDisplayPerUser|SubscriptionServiceValidateAndCheckLimits|BillingCacheServiceCheckSubscriptionEligibility|ExtendSubscriptionBundle|RestoreSubscriptionBundleRestoresMatchingRevokedSiblings|ExecuteSubscriptionFulfillment|RedeemService_InvalidateRedeemCaches_SubscriptionBundleL1AfterCommit|ApplyRefundFinalDeductionDeductsAllBundleSubscriptions|RollbackRefundRestoresRevokedBundleSubscriptionsWithoutExtending|RefundPendingPreservesAndSettlesBundleDeductions|ReturnHeldRefundDeductionSupportsLegacySubscriptionAudit)' -count=1
 cd ..
 ```
 

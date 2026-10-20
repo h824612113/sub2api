@@ -308,11 +308,15 @@ describe('UseKeyModal', () => {
     expect(powershellSettings.env).not.toHaveProperty('CLAUDE_CODE_ATTRIBUTION_HEADER')
     expect(wrapper.text()).toContain('%USERPROFILE%\\.claude\\settings.json')
 
-    const copyButton = wrapper.findAll('button').find((button) =>
-      button.text().includes('keys.useKeyModal.copy')
+    // The request URL has a separate copy button; select the script's own header.
+    const scriptBlock = wrapper.findAll('pre').find((block) =>
+      block.text().includes('$env:ANTHROPIC_AUTH_TOKEN=')
     )
+    expect(scriptBlock).toBeDefined()
+    const copyButton = scriptBlock!.element.parentElement?.querySelector('button')
     expect(copyButton).toBeDefined()
-    await copyButton!.trigger('click')
+    copyButton!.click()
+    await flushPromises()
     expect(copyToClipboardMock).toHaveBeenCalledWith(
       expect.stringContaining('ANTHROPIC_AUTH_TOKEN="sk-grok-claude-test"'),
       'keys.copied'
