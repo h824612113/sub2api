@@ -28,6 +28,19 @@ func (*scopedSubscriptionRepo) GetByID(context.Context, int64) (*service.UserSub
 		AssignedByUser: &service.User{ID: 8, Email: "private-admin@example.com", Balance: 654},
 		Group:          &service.Group{ID: 3, Name: "group", RateMultiplier: 42}}, nil
 }
+
+type scopedSubscriptionGroupRepo struct {
+	service.GroupRepository
+}
+
+func (*scopedSubscriptionGroupRepo) GetByID(context.Context, int64) (*service.Group, error) {
+	return &service.Group{ID: 3, Status: "active", SubscriptionType: "subscription"}, nil
+}
+
+func (r *scopedSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, _, _ int64) (*service.UserSubscription, error) {
+	return r.GetByID(ctx, 1)
+}
+
 func TestScopedAdminSubscriptionDoesNotExposeAssociatedUserAndPricing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := service.NewSubscriptionService(nil, &scopedSubscriptionRepo{}, nil, nil, nil)
@@ -79,7 +92,7 @@ func TestScopedAdminSubscriptionExtendReplayRejectsChangedAuthorization(t *testi
 	t.Cleanup(func() { service.SetDefaultIdempotencyCoordinator(previous) })
 	service.SetDefaultIdempotencyCoordinator(service.NewIdempotencyCoordinator(newMemoryIdempotencyRepoStub(), service.DefaultIdempotencyConfig()))
 	repo := &scopedSubscriptionRepo{}
-	svc := service.NewSubscriptionService(nil, repo, nil, nil, nil)
+	svc := service.NewSubscriptionService(&scopedSubscriptionGroupRepo{}, repo, nil, nil, nil)
 	defer svc.Stop()
 	h := NewSubscriptionHandler(svc)
 	r := gin.New()

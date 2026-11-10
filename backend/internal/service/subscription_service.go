@@ -1498,9 +1498,8 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		needsInvalidateCache = true
 	}
 
-	// 周窗口重置（订阅开始日锚定，每 7 天一个周期）
-	if sub.NeedsWeeklyResetAt(now) {
-		windowStart := anchoredSubscriptionWindowStart(sub.StartsAt, now, 7)
+	// 周窗口按已存锚点每 7 天滚动，且不越过订阅到期时间。
+	if windowStart, ok := sub.automaticWindowStartAt(sub.WeeklyWindowStart, 7*24*time.Hour, now); ok {
 		expectedWindowStart := sub.WeeklyWindowStart
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, expectedWindowStart, windowStart); err != nil {
 			return err
@@ -1510,9 +1509,8 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		needsInvalidateCache = true
 	}
 
-	// 月窗口重置（订阅开始日锚定，每 30 天一个周期）
-	if sub.NeedsMonthlyResetAt(now) {
-		windowStart := anchoredSubscriptionWindowStart(sub.StartsAt, now, 30)
+	// 月窗口按已存锚点每 30 天滚动，且不越过订阅到期时间。
+	if windowStart, ok := sub.automaticWindowStartAt(sub.MonthlyWindowStart, 30*24*time.Hour, now); ok {
 		expectedWindowStart := sub.MonthlyWindowStart
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, expectedWindowStart, windowStart); err != nil {
 			return err
@@ -1562,7 +1560,11 @@ func (s *SubscriptionService) EnsureWindowMaintenance(ctx context.Context, sub *
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
 // 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
-	pooledQuota, err := aggregatePooledSubscriptionQuota(ctx, s.userSubRepo, sub, group)
+	now := time.Now()
+	if s.now != nil {
+		now = s.now()
+	}
+	pooledQuota, err := aggregatePooledSubscriptionQuotaAt(ctx, s.userSubRepo, sub, group, now)
 	if err != nil {
 		return err
 	}
@@ -1613,7 +1615,7 @@ func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *U
 	}
 
 	// 3. 检查用量限额
-	pooledQuota, err := aggregatePooledSubscriptionQuota(ctx, s.userSubRepo, sub, group)
+	pooledQuota, err := aggregatePooledSubscriptionQuotaAt(ctx, s.userSubRepo, sub, group, now)
 	if err != nil {
 		return needsMaintenance, err
 	}

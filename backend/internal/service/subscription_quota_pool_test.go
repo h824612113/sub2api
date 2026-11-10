@@ -284,3 +284,53 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_AllowsIndividualWeeklyO
 func ptrFloat64QuotaPool(v float64) *float64 {
 	return &v
 }
+
+func TestAggregatePooledSubscriptionQuota_RespectsTermAndServiceClock(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		termDays  int
+		elapsed   time.Duration
+		wantUsage float64
+	}{
+		{name: "retains final thirty-day quota", termDays: 30, elapsed: 30*24*time.Hour - time.Minute, wantUsage: 21},
+		{name: "resets partial final period", termDays: 45, elapsed: 30*24*time.Hour + time.Minute, wantUsage: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			startsAt := time.Date(2026, 7, 1, 23, 30, 0, 0, time.UTC)
+			legacyAnchor := startOfDay(startsAt)
+			now := startsAt.Add(tc.elapsed)
+			groups := []*Group{
+				{ID: 10, Description: "quota_pool=legacy_windows", MonthlyLimitUSD: ptrFloat64QuotaPool(10)},
+				{ID: 11, Description: "quota_pool=legacy_windows", MonthlyLimitUSD: ptrFloat64QuotaPool(10)},
+			}
+			subs := make([]UserSubscription, len(groups))
+			for i, group := range groups {
+				subs[i] = UserSubscription{
+					ID: int64(i + 1), UserID: 1, GroupID: group.ID, Group: group,
+					Status: SubscriptionStatusActive, StartsAt: startsAt,
+					ExpiresAt:          startsAt.Add(time.Duration(tc.termDays) * 24 * time.Hour),
+					MonthlyWindowStart: &legacyAnchor, MonthlyUsageUSD: float64(9 + 3*i),
+				}
+			}
+			repo := &quotaPoolUserSubRepoStub{activeByUser: map[int64][]UserSubscription{1: subs}}
+			quota, err := aggregatePooledSubscriptionQuotaAt(context.Background(), repo, &subs[0], groups[0], now)
+			require.NoError(t, err)
+			require.Equal(t, 20.0, quota.MonthlyLimit)
+			require.Equal(t, tc.wantUsage, quota.MonthlyUsage)
+			svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+			defer svc.Stop()
+			svc.now = func() time.Time { return now }
+			current := subs[0]
+			maintenance, err := svc.ValidateAndCheckLimits(context.Background(), &current, groups[0])
+			if tc.wantUsage > quota.MonthlyLimit {
+				require.ErrorIs(t, err, ErrMonthlyLimitExceeded)
+				require.False(t, maintenance)
+				require.ErrorIs(t, svc.CheckUsageLimits(context.Background(), &current, groups[0], 0), ErrMonthlyLimitExceeded)
+			} else {
+				require.NoError(t, err)
+				require.True(t, maintenance)
+				require.NoError(t, svc.CheckUsageLimits(context.Background(), &current, groups[0], 0))
+			}
+		})
+	}
+}

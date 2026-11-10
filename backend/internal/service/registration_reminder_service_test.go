@@ -144,7 +144,8 @@ func TestRegistrationReminderShouldRunNow_OncePerDay(t *testing.T) {
 	now := time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC)
 
 	require.True(t, svc.shouldRunNowFromLastRun(time.Time{}, now))
-	require.False(t, svc.shouldRunNowFromLastRun(now.Add(-10*time.Minute), now))
+	require.False(t, svc.shouldRunNowFromLastRun(now, now.Add(10*time.Minute)))
+	require.True(t, svc.shouldRunNowFromLastRun(now.Add(-10*time.Minute), now))
 	require.True(t, svc.shouldRunNowFromLastRun(now.Add(-24*time.Hour), now))
 }
 
